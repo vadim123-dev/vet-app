@@ -1,0 +1,41 @@
+CREATE TABLE invoices (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  user_id BIGINT UNSIGNED NOT NULL,
+  pet_id BIGINT UNSIGNED NULL,
+  visit_id BIGINT UNSIGNED NULL,
+
+  status ENUM('draft','issued','paid','void','refunded','partial_refund') NOT NULL DEFAULT 'draft',
+  currency CHAR(3) NOT NULL DEFAULT 'ILS',
+
+  subtotal_cents BIGINT NOT NULL DEFAULT 0,
+  tax_cents BIGINT NOT NULL DEFAULT 0,
+  total_cents BIGINT NOT NULL DEFAULT 0,
+
+  issued_at DATETIME NULL,
+  due_at DATETIME NULL,
+  notes TEXT NULL,
+
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+  PRIMARY KEY (id),
+  KEY idx_invoices_user (user_id),
+  KEY idx_invoices_status (status),
+
+  CONSTRAINT fk_invoices_user FOREIGN KEY (user_id) REFERENCES users(id),
+  CONSTRAINT fk_invoices_pet  FOREIGN KEY (pet_id)  REFERENCES pets(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+
+
+#get pet life_stage
+SELECT r.stage_code, r.display_name
+FROM pets p
+JOIN pet_types pt ON pt.id = p.pet_type_id
+JOIN life_stage_rules r ON r.pet_type_id = p.pet_type_id
+WHERE p.id = UUID_TO_BIN('YOUR-PET-UUID-HERE')
+  AND p.birth_date IS NOT NULL
+  AND TIMESTAMPDIFF(MONTH, p.birth_date, CURDATE()) >= r.min_age_months
+  AND (r.max_age_months IS NULL OR TIMESTAMPDIFF(MONTH, p.birth_date, CURDATE()) <= r.max_age_months)
+LIMIT 1;
+

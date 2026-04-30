@@ -1,0 +1,72 @@
+services:
+  mysql:
+    build:
+      context: ./db
+      dockerfile: Dockerfile
+    container_name: mysql8
+    environment:
+      MYSQL_ROOT_PASSWORD: pandaTeya
+      MYSQL_DATABASE: vet
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      timeout: 20s
+      retries: 10
+    networks:
+      - vet-network
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: vet-backend
+    ports:
+      - "5000:5000"
+    environment:
+      FLASK_APP: backend.app
+      FLASK_ENV: development
+      FLASK_DEBUG: 1
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_USER: root
+      DB_PASSWORD: pandaTeya
+      DB_NAME: vet
+      CORS_ORIGINS: "http://localhost:5173,http://frontend:5173"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - vet-network
+    volumes:
+      - ./backend:/app/backend
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: vet-frontend
+    ports:
+      - "5173:5173"
+    environment:
+      VITE_API_URL: http://localhost:5000
+      VITE_BACKEND_URL: http://backend:5000
+    depends_on:
+      - backend
+    networks:
+      - vet-network
+    volumes:
+      - ./frontend/src:/app/src
+      - ./frontend/public:/app/public
+      - ./frontend/index.html:/app/index.html
+      - ./frontend/vite.config.js:/app/vite.config.js
+      - /app/node_modules
+
+volumes:
+  mysql_data:
+
+networks:
+  vet-network:
+    driver: bridge

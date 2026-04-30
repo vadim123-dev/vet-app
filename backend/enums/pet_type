@@ -1,0 +1,26 @@
+from enum import Enum
+
+
+class PetType(str, Enum):
+    DOG = "dog"
+    CAT = "cat"
+
+    RABBIT = "rabbit"
+    FERRET = "ferret"
+
+    GUINEA_PIG = "guinea_pig"
+    HAMSTER = "hamster"
+    GERBIL = "gerbil"
+    CHINCHILLA = "chinchilla"
+    RAT = "rat"
+    MOUSE = "mouse"
+    HEDGEHOG = "hedgehog"
+
+    PARROT = "parrot"          # general bucket for parrots (budgie, macaw, etc.)
+    COCKATIEL = "cockatiel"
+    CANARY = "canary"
+    FINCH = "finch"
+
+    TURTLE = "turtle"
+    LIZARD = "lizard"
+    SNAKE = "snake"

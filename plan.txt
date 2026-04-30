@@ -1,0 +1,19 @@
+1. Finish authentication process V
+2. Get one user                  V 
+3. Add one user                  v
+4. Connect to MySQL DB 
+5. Add other animals
+5. Connect to non sql db ? Redis or other memory services in AWS?
+6. Add two factor authentication with AWS Cognito. User can choose to use it or to use regular authentication
+6. Add different types of users, Vet, Office, Customer 
+7. Create Roles, and check roles when some action wants to be done.
+8. Create a timetable for vets 
+9. Customer wants to schedule a vet checkup for his pet
+10. Add more parameters for Animals, that will show if the animal is healthy or not.. like normal temperature, check more stuff online
+11. Office changes parameters for pet, weight, height, mood -> the app checks agains Animals to check if this is normal 
+12. Create a process that runs on a separate thread and evaluates user checkup times, when need to remind Customer to come for a checkup.
+13. Email Customers and remind them to come for checkups
+14. After user appointment, create vet summary of the checkup and save it in S3 in AWS.
+15. Evaluate email that user sent with AI 
+16. Use webhooks
+17. Connect to Java Application with RabbitMQ or some other service 
