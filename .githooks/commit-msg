@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# Enforces commit message format: [PREFIX] - message
+# Valid prefixes: FRONT, BACK, CI, DB, TEST, DOCS, INFRA, FIX, CHORE
+
+MSG=$(cat "$1")
+PATTERN='^\[(FRONT|BACK|CI|DB|TEST|DOCS|INFRA|FIX|CHORE)\] - .+'
+
+if ! echo "$MSG" | grep -qE "$PATTERN"; then
+  echo ""
+  echo "  ✗ Bad commit message: \"$MSG\""
+  echo ""
+  echo "  Format required:  [PREFIX] - your message"
+  echo ""
+  echo "  Valid prefixes:"
+  echo "    [FRONT]  - React / Vite frontend"
+  echo "    [BACK]   - Flask backend"
+  echo "    [CI]     - GitHub Actions workflows"
+  echo "    [DB]     - Schema, migrations, seed data"
+  echo "    [TEST]   - Tests"
+  echo "    [DOCS]   - README, CONTRIBUTING, docs"
+  echo "    [INFRA]  - Docker, docker-compose, Terraform"
+  echo "    [FIX]    - Bug fixes"
+  echo "    [CHORE]  - Deps, cleanup, formatting"
+  echo ""
+  echo "  Example:  git commit -m \"[BACK] - add GET /health endpoint\""
+  echo ""
+  exit 1
+fi
