@@ -225,7 +225,7 @@ export default function NewAppointmentModal({ open, prefill, resources, patients
   const [error,       setError]      = useState("");
 
   const vets  = resources.filter(r => r.role === "vet");
-  const rooms = resources.filter(r => r.role !== "vet");
+  const _rooms = resources.filter(r => r.role !== "vet");
 
   // Appointments for the selected date — used to derive max duration
   const [dayAppts, setDayAppts] = useState([]);

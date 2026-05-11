@@ -24,6 +24,20 @@ export default defineConfig([
     },
     rules: {
       'no-unused-vars': ['error', { varsIgnorePattern: '^[A-Z_]' }],
+      // React Compiler rules — codebase predates them, too many false positives
+      'react-hooks/set-state-in-effect':         'off',
+      'react-hooks/preserve-manual-memoization': 'off',
+      'react-hooks/purity':                      'off',
+      'react-hooks/static-components':           'off',
+      // Files that export context + hooks alongside components are intentional
+      'react-refresh/only-export-components': ['warn', { allowConstantExport: true }],
+    },
+  },
+  // Node.js globals for Vite/config files
+  {
+    files: ['*.config.{js,ts}', 'vite.config.*'],
+    languageOptions: {
+      globals: globals.node,
     },
   },
 ])

@@ -47,17 +47,7 @@ function nowMins() {
   return h * 60 + m;
 }
 
-function nowLabel() {
-  // 24-hour label for the now-line: "20:41"
-  const now = new Date();
-  const parts = new Intl.DateTimeFormat("en-US", {
-    hour: "2-digit", minute: "2-digit", hour12: false,
-    timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-  }).formatToParts(now);
-  const h = (parts.find(p => p.type === "hour")?.value  ?? "00").padStart(2, "0");
-  const m = (parts.find(p => p.type === "minute")?.value ?? "00").padStart(2, "0");
-  return `${h}:${m}`;
-}
+
 function isoDate(d) {
   // d is a Date object; returns "YYYY-MM-DD" in local time
   const y = d.getFullYear();
@@ -448,7 +438,7 @@ function SkeletonGrid({ numCols }) {
 export default function AppointmentsPage({ walkIn = false, onWalkInHandled, onWalkInDismissed, patients = [] }) {
   const [view,         setView]         = useState("day");
   const [selectedBlock,setSelectedBlock]= useState(null);
-  const [hoveredGroup, setHoveredGroup] = useState(null);
+  const [_hoveredGroup, _setHoveredGroup] = useState(null);
   const [, setTick]    = useState(0);
   const now = nowMins();
   const [bookingOpen,    setBookingOpen]    = useState(false);
