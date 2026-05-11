@@ -39,6 +39,10 @@ def _create_app():
     app.register_blueprint(shifts_bp)
     app.register_blueprint(dashboard_bp)
 
+    @app.get("/health")
+    def health():
+        return {"status": "ok"}, 200
+
     origins_env = os.getenv("CORS_ORIGINS", "")
     allowed_origins = [o.strip() for o in origins_env.split(",") if o.strip()]
     CORS(
