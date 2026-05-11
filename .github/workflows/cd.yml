@@ -182,6 +182,7 @@ jobs:
         run: |
           docker pull ${{ secrets.DOCKERHUB_USERNAME }}/vet-db:${{ github.sha }}
           docker pull ${{ secrets.DOCKERHUB_USERNAME }}/vet-backend:${{ github.sha }}
+          docker pull ${{ secrets.DOCKERHUB_USERNAME }}/vet-frontend:${{ github.sha }}
 
       - name: Start DB container
         run: |
@@ -234,8 +235,24 @@ jobs:
       - name: Run tests
         run: pytest -v
 
+      - name: Start frontend container
+        run: |
+          docker run -d --name vet-frontend-e2e \
+            --network=host \
+            ${{ secrets.DOCKERHUB_USERNAME }}/vet-frontend:${{ github.sha }}
+
+      - name: Smoke test — frontend serves HTML
+        run: |
+          for i in $(seq 1 10); do
+            curl -sf http://localhost:80 | grep -i "html" && exit 0
+            sleep 2
+          done
+          docker logs vet-frontend-e2e
+          exit 1
+
       - name: Stop and remove containers
         if: always()
         run: |
           docker rm -f vet-e2e || true
           docker rm -f vet-mysql || true
+          docker rm -f vet-frontend-e2e || true
