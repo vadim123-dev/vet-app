@@ -151,6 +151,7 @@ export default function RescheduleModal({ open, appt, resources, onClose, onResc
 
   useEffect(() => {
     if (durationMins > maxDuration) setDuration(maxDuration);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- react to constraint changes only; adding durationMins would fire on every keystroke
   }, [maxDuration]);
 
   useEffect(() => {

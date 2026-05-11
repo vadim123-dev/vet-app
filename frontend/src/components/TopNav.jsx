@@ -10,6 +10,7 @@ const ALL_TABS = [
   { id: "users",        label: "User Management",   icon: "users",    roles: ["admin"] },
 ];
 
+// eslint-disable-next-line react-refresh/only-export-components -- tab config intentionally co-located
 export function getTabsForRole(roles = []) {
   return ALL_TABS.filter(t => t.roles.some(r => roles.includes(r)));
 }

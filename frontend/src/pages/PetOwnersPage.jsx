@@ -2,6 +2,7 @@ import React, { useState, useMemo } from "react";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+// eslint-disable-next-line react-refresh/only-export-components -- helper intentionally co-located
 export function formatDateLong(isoStr) {
   if (!isoStr) return "—";
   return new Date(isoStr).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });

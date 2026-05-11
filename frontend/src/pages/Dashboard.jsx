@@ -35,7 +35,7 @@ function OwnerDetailModal({ owner, onClose }) {
       .then(data => setPets(data.pets || []))
       .catch(() => setPets([]))
       .finally(() => setPetsLoading(false));
-  }, [owner?.user_name]);
+  }, [owner]);
 
   if (!owner) return null;
 
