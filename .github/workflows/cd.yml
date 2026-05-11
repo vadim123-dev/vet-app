@@ -232,8 +232,11 @@ jobs:
       - name: Install test dependencies
         run: pip install -r backend/requirements-dev.txt
 
-      - name: Run tests
-        run: pytest -v
+      - name: Run unit tests
+        run: pytest backend/tests/unit -v
+
+      - name: Run E2E tests
+        run: pytest backend/tests/e2e -v
 
       - name: Start frontend container
         run: |
