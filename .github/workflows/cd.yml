@@ -5,30 +5,36 @@ on:
     branches: [master]
 
 jobs:
-  # ── Job 1: Build backend image, spin it up, run smoke tests ─────────────────
+  # ── Job 1: Build all images locally, run smoke tests ────────────────────────
   build-and-validate:
     name: Build & Smoke Test
     runs-on: ubuntu-latest
-
-    services:
-      mysql:
-        image: mysql:8.0
-        env:
-          MYSQL_ROOT_PASSWORD: pandaTeya
-          MYSQL_DATABASE: vet
-        ports:
-          - 3306:3306
-        options: >-
-          --health-cmd="mysqladmin ping -h localhost"
-          --health-interval=10s
-          --health-timeout=5s
-          --health-retries=10
 
     steps:
       - uses: actions/checkout@v4
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
+
+      - name: Build DB image from our Dockerfile
+        run: docker build -t vet-db ./db
+
+      - name: Start DB container
+        run: |
+          docker run -d --name vet-mysql \
+            --network=host \
+            -e MYSQL_ROOT_PASSWORD=pandaTeya \
+            -e MYSQL_DATABASE=vet \
+            vet-db
+
+      - name: Wait for MySQL to be ready
+        run: |
+          for i in $(seq 1 20); do
+            docker exec vet-mysql mysqladmin ping -uroot -ppandaTeya --silent && exit 0
+            sleep 3
+          done
+          docker logs vet-mysql
+          exit 1
 
       - name: Build backend image
         uses: docker/build-push-action@v5
@@ -39,12 +45,6 @@ jobs:
           tags: |
             vet-backend:${{ github.sha }}
             vet-backend:latest
-
-      - name: Seed database
-        run: |
-          sudo apt-get install -y mysql-client
-          mysql -h 127.0.0.1 -uroot -ppandaTeya vet < db/init/schema.sql
-          mysql -h 127.0.0.1 -uroot -ppandaTeya vet < db/init/seed_data.sql
 
       - name: Start backend container
         run: |
@@ -78,9 +78,11 @@ jobs:
             -H "Content-Type: application/json" \
             -d '{"user_name":"Admin","password":"Admin"}' | grep access_token
 
-      - name: Stop and remove container
+      - name: Stop and remove containers
         if: always()
-        run: docker rm -f vet-smoke || true
+        run: |
+          docker rm -f vet-smoke || true
+          docker rm -f vet-mysql || true
 
   # ── Job 2: Push all 3 images to Docker Hub (amd64 + arm64) ──────────────────
   push-to-dockerhub:
@@ -135,25 +137,11 @@ jobs:
             ${{ secrets.DOCKERHUB_USERNAME }}/vet-db:${{ github.sha }}
             ${{ secrets.DOCKERHUB_USERNAME }}/vet-db:latest
 
-  # ── Job 3: Pull from Docker Hub, run E2E tests ───────────────────────────────
+  # ── Job 3: Pull all images from Docker Hub, run E2E tests ───────────────────
   e2e-tests:
     name: E2E Tests
     needs: push-to-dockerhub
     runs-on: ubuntu-latest
-
-    services:
-      mysql:
-        image: mysql:8.0
-        env:
-          MYSQL_ROOT_PASSWORD: pandaTeya
-          MYSQL_DATABASE: vet
-        ports:
-          - 3306:3306
-        options: >-
-          --health-cmd="mysqladmin ping -h localhost"
-          --health-interval=10s
-          --health-timeout=5s
-          --health-retries=10
 
     steps:
       - uses: actions/checkout@v4
@@ -164,16 +152,29 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Pull backend image from Docker Hub
-        run: docker pull ${{ secrets.DOCKERHUB_USERNAME }}/vet-backend:${{ github.sha }}
-
-      - name: Seed database
+      - name: Pull images from Docker Hub
         run: |
-          sudo apt-get install -y mysql-client
-          mysql -h 127.0.0.1 -uroot -ppandaTeya vet < db/init/schema.sql
-          mysql -h 127.0.0.1 -uroot -ppandaTeya vet < db/init/seed_data.sql
+          docker pull ${{ secrets.DOCKERHUB_USERNAME }}/vet-db:${{ github.sha }}
+          docker pull ${{ secrets.DOCKERHUB_USERNAME }}/vet-backend:${{ github.sha }}
 
-      - name: Start backend from Docker Hub image
+      - name: Start DB container
+        run: |
+          docker run -d --name vet-mysql \
+            --network=host \
+            -e MYSQL_ROOT_PASSWORD=pandaTeya \
+            -e MYSQL_DATABASE=vet \
+            ${{ secrets.DOCKERHUB_USERNAME }}/vet-db:${{ github.sha }}
+
+      - name: Wait for MySQL to be ready
+        run: |
+          for i in $(seq 1 20); do
+            docker exec vet-mysql mysqladmin ping -uroot -ppandaTeya --silent && exit 0
+            sleep 3
+          done
+          docker logs vet-mysql
+          exit 1
+
+      - name: Start backend container
         run: |
           docker run -d --name vet-e2e \
             --network=host \
@@ -207,6 +208,8 @@ jobs:
       - name: Run tests
         run: pytest -v
 
-      - name: Stop and remove container
+      - name: Stop and remove containers
         if: always()
-        run: docker rm -f vet-e2e || true
+        run: |
+          docker rm -f vet-e2e || true
+          docker rm -f vet-mysql || true
