@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useMemo, useState } from "react";
+import React, { createContext, useCallback, useContext, useMemo, useState } from "react";
 import { clearTokens, getAccessToken, setAccessToken, setRefreshToken } from "../api";
 
 const AuthContext = createContext(null);
@@ -29,16 +29,20 @@ export function AuthProvider({ children }) {
     setUserState(null);
   };
 
-  const hasRole = (role) => Array.isArray(user?.roles) && user.roles.includes(role);
+  const hasRole = useCallback(
+    (role) => Array.isArray(user?.roles) && user.roles.includes(role),
+    [user]
+  );
 
   const value = useMemo(
     () => ({ token, isAuthenticated: Boolean(token), user, login, logout, hasRole }),
-    [token, user]
+    [token, user, hasRole]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
+// eslint-disable-next-line react-refresh/only-export-components -- hook intentionally co-located with its provider
 export function useAuth() {
   const ctx = useContext(AuthContext);
   if (!ctx) throw new Error("useAuth must be used within AuthProvider");

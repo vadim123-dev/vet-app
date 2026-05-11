@@ -249,6 +249,7 @@ export default function NewAppointmentModal({ open, prefill, resources, patients
   // Auto-cap duration if a resource/time change tightens the window
   useEffect(() => {
     if (durationMins > maxDuration) setDuration(maxDuration);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- react to constraint changes only; adding durationMins would fire on every keystroke
   }, [maxDuration]);
 
   // Derive room automatically: surgery proc → surgery room; else → vet's exam room
@@ -278,6 +279,7 @@ export default function NewAppointmentModal({ open, prefill, resources, patients
       .then(d => setPets(Array.isArray(d) ? d : []))
       .catch(() => {})
       .finally(() => setPetsLoading(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- pets.length is a guard to avoid refetch; adding it as dep would cause a fetch loop
   }, [open, patients]);
 
   // Pre-fill from slot click whenever prefill changes

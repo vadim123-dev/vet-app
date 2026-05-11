@@ -544,6 +544,7 @@ export default function DashboardPage({ user, onNavigate, onCheckIn, activityFee
         .then(d => setCurrentUser(d?.user || d))
         .catch(() => {});
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional mount-only fetch; re-running on user change would clobber local state
   }, []);
 
   useEffect(() => {
@@ -599,7 +600,7 @@ export default function DashboardPage({ user, onNavigate, onCheckIn, activityFee
       .filter(a => a.status === "scheduled" && apptStartMins(a) > now)
       .sort((a, b) => apptStartMins(a) - apptStartMins(b))[0] || null;
     return { total, onSite, expected, nextAppt };
-  }, [appts, now]);
+  }, [visibleAppts, now]);
 
   const firstName = currentUser?.first_name || currentUser?.user_name || "there";
   const today     = new Date();
