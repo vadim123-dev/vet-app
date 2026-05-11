@@ -118,6 +118,87 @@ CREATE TABLE IF NOT EXISTS vet_appointments (
     INDEX idx_appointment_date (appointment_date)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE IF NOT EXISTS visits (
+    id               BINARY(16)  PRIMARY KEY,
+    appointment_id   BINARY(16)  NOT NULL UNIQUE,
+    pet_id           BINARY(16)  NOT NULL,
+    vet_user_id      BINARY(16),
+    chief_complaint  TEXT,
+    exam_notes       TEXT,
+    assessment       TEXT,
+    plan             TEXT,
+    created_at       TIMESTAMP   DEFAULT CURRENT_TIMESTAMP,
+    updated_at       TIMESTAMP   DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (appointment_id) REFERENCES vet_appointments(id) ON DELETE CASCADE,
+    FOREIGN KEY (pet_id)         REFERENCES pets(id)             ON DELETE CASCADE,
+    FOREIGN KEY (vet_user_id)    REFERENCES users(id)            ON DELETE SET NULL,
+    INDEX idx_appointment (appointment_id),
+    INDEX idx_pet         (pet_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS prescriptions (
+    id            INT          PRIMARY KEY AUTO_INCREMENT,
+    visit_id      BINARY(16)   NOT NULL,
+    drug_name     VARCHAR(200) NOT NULL,
+    dosage        VARCHAR(100),
+    frequency     VARCHAR(100),
+    duration_days INT,
+    notes         TEXT,
+    created_at    TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (visit_id) REFERENCES visits(id) ON DELETE CASCADE,
+    INDEX idx_visit (visit_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS user_dashboard_layouts (
+    user_id     BINARY(16) PRIMARY KEY,
+    widget_order JSON NOT NULL,
+    updated_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS shift_checkins (
+    id              BINARY(16)  PRIMARY KEY,
+    user_id         BINARY(16)  NOT NULL,
+    checked_in_at   TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    checked_out_at  TIMESTAMP   NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    INDEX idx_user       (user_id),
+    INDEX idx_checked_in (checked_in_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS reminders (
+    id          BINARY(16)   PRIMARY KEY,
+    pet_id      BINARY(16),
+    type        VARCHAR(20)  NOT NULL DEFAULT 'general', -- vaccine | call | followup | general
+    note        VARCHAR(500) NOT NULL,
+    priority    VARCHAR(20)  NOT NULL DEFAULT 'soon',    -- overdue | today | soon
+    due_date    DATE,
+    is_done     BOOLEAN      NOT NULL DEFAULT FALSE,
+    created_at  TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (pet_id) REFERENCES pets(id) ON DELETE CASCADE,
+    INDEX idx_done     (is_done),
+    INDEX idx_priority (priority)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS hospitalizations (
+    id               BINARY(16)   PRIMARY KEY,
+    pet_id           BINARY(16)   NOT NULL,
+    room_id          INT,
+    reason           VARCHAR(255) NOT NULL,
+    status           VARCHAR(20)  NOT NULL DEFAULT 'stable', -- stable | monitoring | critical | ready
+    caretaker_id     BINARY(16),
+    admitted_at      TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    discharged_at    TIMESTAMP    NULL,
+    notes            TEXT,
+    created_at       TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
+    updated_at       TIMESTAMP    DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (pet_id)       REFERENCES pets(id)         ON DELETE CASCADE,
+    FOREIGN KEY (room_id)      REFERENCES clinic_rooms(id) ON DELETE SET NULL,
+    FOREIGN KEY (caretaker_id) REFERENCES users(id)        ON DELETE SET NULL,
+    INDEX idx_pet          (pet_id),
+    INDEX idx_discharged   (discharged_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS vet_schedules (
     id           BINARY(16) PRIMARY KEY,
     vet_user_id  BINARY(16) NOT NULL,

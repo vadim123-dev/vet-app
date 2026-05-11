@@ -445,7 +445,7 @@ function SkeletonGrid({ numCols }) {
 
 // ─── Main page ────────────────────────────────────────────────────────────────
 
-export default function AppointmentsPage({ walkIn = false, onWalkInHandled, onWalkInDismissed }) {
+export default function AppointmentsPage({ walkIn = false, onWalkInHandled, onWalkInDismissed, patients = [] }) {
   const [view,         setView]         = useState("day");
   const [selectedBlock,setSelectedBlock]= useState(null);
   const [hoveredGroup, setHoveredGroup] = useState(null);
@@ -744,6 +744,7 @@ export default function AppointmentsPage({ walkIn = false, onWalkInHandled, onWa
         open={bookingOpen}
         prefill={bookingPrefill}
         resources={resources}
+        patients={patients}
         onClose={() => {
           setBookingOpen(false);
           if (isWalkInBooking.current) {

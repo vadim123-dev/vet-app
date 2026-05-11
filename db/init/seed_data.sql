@@ -18,7 +18,8 @@ INSERT INTO user_roles (code, name) VALUES
 ('customer',     'Customer'),
 ('vet',          'Veterinarian'),
 ('office_staff', 'Office Staff'),
-('admin',        'Administrator')
+('admin',        'Administrator'),
+('coordinator',  'Coordinator')
 ON DUPLICATE KEY UPDATE name=VALUES(name);
 
 INSERT INTO breeds (code, name, pet_type_id, origin) VALUES
@@ -59,9 +60,15 @@ INSERT INTO users (id, user_name, first_name, last_name, gender, city, telephone
 (UNHEX('112233445566778899AABBCC10000002'), 'dr_david', 'David', 'Hoffman', 1, 'Jerusalem', '0552221111', '$2b$12$abcdefghijklmnopqrstuvwxyz')
 ON DUPLICATE KEY UPDATE id=id;
 
--- Office staff
+-- Office staff / Coordinator
 INSERT INTO users (id, user_name, first_name, last_name, gender, city, telephone, password_hash) VALUES
 (UNHEX('112233445566778899AABBCC20000001'), 'office_01', 'Lisa', 'Brown', 2, 'Tel Aviv', '0559999999', '$2b$12$abcdefghijklmnopqrstuvwxyz')
+ON DUPLICATE KEY UPDATE id=id;
+
+-- Admin
+INSERT INTO users (id, user_name, first_name, last_name, gender, city, telephone, password_hash) VALUES
+(UNHEX('AAAAAAAAAAAAAAAAAAAAAAAAAA000001'), 'Admin', 'Admin', 'User', 1, 'Tel Aviv', '0500000000',
+ 'scrypt:32768:8:1$6gqsV0J4C91cgtC5$23131551212a66872a7b3328aac2a86689b1d468d83d4b8896bdc4e465c19ea94f428c8ab06200a3b5e48cfb41165a8a149e4749bf23ff239bc46edcaae18fa3')
 ON DUPLICATE KEY UPDATE id=id;
 
 -- ── Role assignments ──────────────────────────────────────────────────────────
@@ -75,7 +82,8 @@ INSERT INTO user_role_assignments (user_id, role_id) VALUES
 (UNHEX('112233445566778899AABBCC00000006'), 1), -- yossi     → customer
 (UNHEX('112233445566778899AABBCC10000001'), 2), -- dr_amy    → vet
 (UNHEX('112233445566778899AABBCC10000002'), 2), -- dr_david  → vet
-(UNHEX('112233445566778899AABBCC20000001'), 3)  -- office_01 → office_staff
+(UNHEX('112233445566778899AABBCC20000001'), 3),  -- office_01 → office_staff (migrated to coordinator at runtime)
+(UNHEX('AAAAAAAAAAAAAAAAAAAAAAAAAA000001'), 4)   -- Admin → admin
 ON DUPLICATE KEY UPDATE user_id=user_id;
 
 -- ── Pets ──────────────────────────────────────────────────────────────────────
@@ -97,6 +105,46 @@ INSERT INTO pet_measurements (id, pet_id, measured_at, weight_kg, height_cm, tem
 (UNHEX('334455667788990000AABBCC00000003'), UNHEX('223344556677889900AABBCC00000003'), NOW(), 3.8,  NULL, 38.3, 'Healthy'),
 (UNHEX('334455667788990000AABBCC00000005'), UNHEX('223344556677889900AABBCC00000005'), NOW(), 28.0, 55,   38.0, 'Excellent shape'),
 (UNHEX('334455667788990000AABBCC00000006'), UNHEX('223344556677889900AABBCC00000006'), NOW(), 2.5,  25,   38.2, 'Good weight for rabbit')
+ON DUPLICATE KEY UPDATE id=id;
+
+-- ── Reminders ─────────────────────────────────────────────────────────────────
+
+INSERT INTO reminders (id, pet_id, type, note, priority, due_date) VALUES
+(UNHEX('CCCCCCCCCCCCCCCCCCCCCCCC00000001'), UNHEX('223344556677889900AABBCC00000002'), 'vaccine',  'Rabies booster overdue',               'overdue', DATE_SUB(CURDATE(), INTERVAL 10 DAY)),
+(UNHEX('CCCCCCCCCCCCCCCCCCCCCCCC00000002'), UNHEX('223344556677889900AABBCC00000003'), 'vaccine',  'FVRCP vaccine overdue',                'overdue', DATE_SUB(CURDATE(), INTERVAL 15 DAY)),
+(UNHEX('CCCCCCCCCCCCCCCCCCCCCCCC00000003'), UNHEX('223344556677889900AABBCC00000004'), 'call',     'Annual wellness exam due - call owner', 'overdue', DATE_SUB(CURDATE(), INTERVAL 5 DAY)),
+(UNHEX('CCCCCCCCCCCCCCCCCCCCCCCC00000004'), UNHEX('223344556677889900AABBCC00000006'), 'call',     'Discharge ready - notify owner',       'today',   CURDATE()),
+(UNHEX('CCCCCCCCCCCCCCCCCCCCCCCC00000005'), UNHEX('223344556677889900AABBCC00000001'), 'followup', 'Post-visit follow-up call',            'today',   CURDATE()),
+(UNHEX('CCCCCCCCCCCCCCCCCCCCCCCC00000006'), UNHEX('223344556677889900AABBCC00000005'), 'vaccine',  'Bordetella booster due in 6 days',     'soon',    DATE_ADD(CURDATE(), INTERVAL 6 DAY))
+ON DUPLICATE KEY UPDATE id=id;
+
+-- ── Hospitalizations ──────────────────────────────────────────────────────────
+
+INSERT INTO hospitalizations (id, pet_id, room_id, reason, status, caretaker_id, admitted_at, notes) VALUES
+(UNHEX('BBBBBBBBBBBBBBBBBBBBBBBB00000001'),
+ UNHEX('223344556677889900AABBCC00000002'), 4,
+ 'Post-op observation — spleen surgery', 'stable',
+ UNHEX('112233445566778899AABBCC10000001'),
+ DATE_SUB(NOW(), INTERVAL 1 DAY),
+ 'Vitals stable. Keep NPO until tomorrow morning.')
+ON DUPLICATE KEY UPDATE id=id;
+
+INSERT INTO hospitalizations (id, pet_id, room_id, reason, status, caretaker_id, admitted_at, notes) VALUES
+(UNHEX('BBBBBBBBBBBBBBBBBBBBBBBB00000002'),
+ UNHEX('223344556677889900AABBCC00000003'), 2,
+ 'IV fluids — acute kidney injury', 'monitoring',
+ UNHEX('112233445566778899AABBCC10000002'),
+ DATE_SUB(NOW(), INTERVAL 2 DAY),
+ 'Creatinine trending down. Recheck labs in 6 hours.')
+ON DUPLICATE KEY UPDATE id=id;
+
+INSERT INTO hospitalizations (id, pet_id, room_id, reason, status, caretaker_id, admitted_at, notes) VALUES
+(UNHEX('BBBBBBBBBBBBBBBBBBBBBBBB00000003'),
+ UNHEX('223344556677889900AABBCC00000006'), 1,
+ 'GI stasis — recovery', 'ready',
+ UNHEX('112233445566778899AABBCC10000001'),
+ DATE_SUB(NOW(), INTERVAL 3 DAY),
+ 'Eating and moving well. Ready for discharge this afternoon.')
 ON DUPLICATE KEY UPDATE id=id;
 
 -- ── Vet schedules ─────────────────────────────────────────────────────────────

@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useCallback } from "react";
-import TopNav, { NAV_TABS, NavIcon } from "../components/TopNav";
+import TopNav, { getTabsForRole, NavIcon } from "../components/TopNav";
 import PetOwnersPage, { formatDateLong } from "./PetOwnersPage";
 import PatientsPage from "./PatientsPage";
 import PetProfileView from "./PetProfileView";
 import AppointmentsPage from "./AppointmentsPage";
 import DashboardPage from "./DashboardPage";
+import UserManagementPage from "./UserManagementPage";
 import AddOwnerModal from "./AddOwnerModal";
 import AddPatientModal from "./AddPatientModal";
 import CheckInModal from "./CheckInModal";
@@ -12,8 +13,6 @@ import { apiFetch } from "../api";
 import { useAuth } from "../auth/AuthContext";
 
 const PET_TYPE_EMOJI = { dog: "🐶", cat: "🐱", rabbit: "🐰", bird: "🦜", reptile: "🦎", parrot: "🦜", other: "🐾" };
-
-// ─── Owner detail modal ───────────────────────────────────────────────────────
 
 function DetailRow({ label, value }) {
   return (
@@ -43,8 +42,6 @@ function OwnerDetailModal({ owner, onClose }) {
   return (
     <div onClick={onClose} style={{ position:"fixed", inset:0, zIndex:100, background:"oklch(0.25 0.025 50 / 0.35)", backdropFilter:"blur(4px)", display:"flex", alignItems:"center", justifyContent:"center", padding:24, animation:"modal-fade 160ms ease both" }}>
       <div onClick={e => e.stopPropagation()} style={{ width:"100%", maxWidth:520, background:"var(--surface)", borderRadius:22, boxShadow:"0 40px 80px -30px oklch(0.3 0.08 40 / 0.4)", padding:32, animation:"modal-pop 220ms cubic-bezier(.2,1,.4,1) both", border:"1px solid var(--border)" }}>
-
-        {/* Header */}
         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
           <div>
             <div style={{ fontFamily:"Inter, sans-serif", fontSize:12, fontWeight:600, color:"var(--muted)", letterSpacing:"0.06em", textTransform:"uppercase" }}>Owner profile</div>
@@ -54,16 +51,12 @@ function OwnerDetailModal({ owner, onClose }) {
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M6 6l12 12M18 6l-12 12"/></svg>
           </button>
         </div>
-
-        {/* Details grid */}
         <div style={{ marginTop:22, display:"grid", gridTemplateColumns:"1fr 1fr", gap:14 }}>
-          <DetailRow label="Phone"       value={owner.telephone} />
-          <DetailRow label="City"        value={owner.city} />
-          <DetailRow label="Last visit"  value={owner.last_appointment ? formatDateLong(owner.last_appointment) : "No visits yet"} />
+          <DetailRow label="Phone"        value={owner.telephone} />
+          <DetailRow label="City"         value={owner.city} />
+          <DetailRow label="Last visit"   value={owner.last_appointment ? formatDateLong(owner.last_appointment) : "No visits yet"} />
           <DetailRow label="Member since" value={formatDateLong(owner.created_at)} />
         </div>
-
-        {/* Pets */}
         <div style={{ marginTop:22 }}>
           <div style={{ fontFamily:"Inter, sans-serif", fontSize:12, fontWeight:600, color:"var(--muted)", letterSpacing:"0.04em", textTransform:"uppercase", marginBottom:10 }}>
             Pets ({petsLoading ? "…" : pets.length})
@@ -89,8 +82,6 @@ function OwnerDetailModal({ owner, onClose }) {
             </div>
           )}
         </div>
-
-        {/* Actions */}
         <div style={{ display:"flex", gap:8, marginTop:26 }}>
           <button style={{ flex:1, height:42, borderRadius:12, border:"none", background:"var(--primary)", color:"white", fontFamily:"Inter, sans-serif", fontSize:14, fontWeight:600, cursor:"pointer", boxShadow:"0 8px 22px -10px var(--primary)" }}>
             Open full record
@@ -104,10 +95,8 @@ function OwnerDetailModal({ owner, onClose }) {
   );
 }
 
-// ─── Placeholder for tabs not yet built ──────────────────────────────────────
-
 function PlaceholderPage({ tabId }) {
-  const tab = NAV_TABS.find(t => t.id === tabId);
+  const tab = getTabsForRole(["admin", "vet", "coordinator"]).find(t => t.id === tabId) || { label: tabId, icon: "home" };
   return (
     <div style={{ padding:"80px 28px", maxWidth:1440, margin:"0 auto", textAlign:"center" }}>
       <div style={{ display:"inline-flex", alignItems:"center", justifyContent:"center", width:84, height:84, borderRadius:24, background:"color-mix(in oklch, var(--primary) 14%, var(--surface))", color:"var(--primary)", marginBottom:20 }}>
@@ -115,17 +104,21 @@ function PlaceholderPage({ tabId }) {
       </div>
       <h1 style={{ fontFamily:"'Fraunces', Georgia, serif", fontSize:36, fontWeight:500, color:"var(--ink)", margin:0, letterSpacing:"-0.015em" }}>{tab.label}</h1>
       <p style={{ fontFamily:"Inter, sans-serif", fontSize:15, color:"var(--muted)", marginTop:10 }}>
-        This screen is coming soon. Pet Owners is the active section for now.
+        This screen is coming soon.
       </p>
     </div>
   );
 }
 
-// ─── App shell ────────────────────────────────────────────────────────────────
-
 export default function Dashboard() {
-  const { logout } = useAuth();
-  const [active,         setActive]         = useState("dashboard");
+  const { logout, user } = useAuth();
+  const roles = user?.roles || [];
+  const isVet = roles.includes("vet");
+
+  const tabs = getTabsForRole(roles);
+  const defaultTab = tabs[0]?.id || "dashboard";
+
+  const [active,         setActive]         = useState(defaultTab);
   const [viewing,        setViewing]        = useState(null);
   const [walkInPending,  setWalkInPending]  = useState(false);
   const [viewingPatient, setViewingPatient] = useState(null);
@@ -138,11 +131,13 @@ export default function Dashboard() {
   const [patientsLoading, setPatientsLoading] = useState(true);
   const [patientsError,   setPatientsError]   = useState(null);
 
-  const [showAddOwner,    setShowAddOwner]    = useState(false);
-  const [showAddPatient,  setShowAddPatient]  = useState(false);
-  const [showCheckIn,     setShowCheckIn]     = useState(false);
-  const [activityFeed,    setActivityFeed]    = useState([]);
-  const [dashRefreshKey,  setDashRefreshKey]  = useState(0);
+  const [shiftCheckedIn, setShiftCheckedIn] = useState(false);
+
+  const [showAddOwner,   setShowAddOwner]   = useState(false);
+  const [showAddPatient, setShowAddPatient] = useState(false);
+  const [showCheckIn,    setShowCheckIn]    = useState(false);
+  const [activityFeed,   setActivityFeed]   = useState([]);
+  const [dashRefreshKey, setDashRefreshKey] = useState(0);
 
   const fetchOwners = useCallback(() => {
     setOwnersLoading(true);
@@ -163,7 +158,28 @@ export default function Dashboard() {
   useEffect(() => {
     fetchOwners();
     fetchPatients();
+    apiFetch("/shifts/my-status")
+      .then(d => setShiftCheckedIn(!!d))
+      .catch(() => {});
   }, [fetchOwners, fetchPatients]);
+
+  const handleShiftToggle = useCallback(async () => {
+    try {
+      if (shiftCheckedIn) {
+        await apiFetch("/shifts/checkout", { method: "POST" });
+        setShiftCheckedIn(false);
+      } else {
+        await apiFetch("/shifts/checkin", { method: "POST" });
+        setShiftCheckedIn(true);
+      }
+      setDashRefreshKey(k => k + 1);
+    } catch { /* silent */ }
+  }, [shiftCheckedIn]);
+
+  const handleTabChange = (tab) => {
+    setActive(tab);
+    setViewingPatient(null);
+  };
 
   const handleCheckedIn = useCallback(({ petName, ownerName, vetName, time }) => {
     setShowCheckIn(false);
@@ -180,62 +196,83 @@ export default function Dashboard() {
     }, ...prev]);
   }, []);
 
+  function renderPage() {
+    if (active === "dashboard") {
+      return (
+        <DashboardPage
+          user={user}
+          onNavigate={(tab, opts = {}) => { setActive(tab); if (opts?.walkIn) setWalkInPending(true); }}
+          onCheckIn={() => setShowCheckIn(true)}
+          activityFeed={activityFeed}
+          refreshKey={dashRefreshKey}
+        />
+      );
+    }
+    if (active === "owners") {
+      return (
+        <PetOwnersPage
+          owners={owners}
+          loading={ownersLoading}
+          error={ownersError}
+          onView={setViewing}
+          onAddOwner={!isVet ? () => setShowAddOwner(true) : undefined}
+        />
+      );
+    }
+    if (active === "patients") {
+      if (viewingPatient) {
+        return (
+          <PetProfileView
+            pet={viewingPatient}
+            user={user}
+            onBack={() => setViewingPatient(null)}
+            onViewOwner={() => { setViewingPatient(null); setActive("owners"); }}
+          />
+        );
+      }
+      return (
+        <PatientsPage
+          patients={patients}
+          loading={patientsLoading}
+          error={patientsError}
+          onViewOwner={() => setActive("owners")}
+          onViewPet={setViewingPatient}
+          onAddPatient={!isVet ? () => setShowAddPatient(true) : undefined}
+        />
+      );
+    }
+    if (active === "appointments") {
+      return (
+        <AppointmentsPage
+          walkIn={walkInPending}
+          onWalkInHandled={() => setWalkInPending(false)}
+          onWalkInDismissed={() => { setWalkInPending(false); setActive("dashboard"); }}
+          patients={patients}
+        />
+      );
+    }
+    if (active === "users") {
+      return <UserManagementPage />;
+    }
+    return <PlaceholderPage tabId={active} />;
+  }
+
   return (
     <div style={{ minHeight:"100vh", background:"var(--bg)", display:"flex", flexDirection:"column" }}>
-      <TopNav active={active} onChange={tab => { setActive(tab); setViewingPatient(null); }} onLogout={logout} />
-
+      <TopNav active={active} onChange={handleTabChange} onLogout={logout} user={user} shiftCheckedIn={shiftCheckedIn} onShiftToggle={handleShiftToggle} />
 
       <main style={{ flex:1 }}>
-        {active === "dashboard"
-          ? <DashboardPage
-              onNavigate={(tab, opts = {}) => { setActive(tab); if (opts?.walkIn) setWalkInPending(true); }}
-              onCheckIn={() => setShowCheckIn(true)}
-              activityFeed={activityFeed}
-              refreshKey={dashRefreshKey}
-            />
-          : active === "owners"
-          ? <PetOwnersPage owners={owners} loading={ownersLoading} error={ownersError} onView={setViewing} onAddOwner={() => setShowAddOwner(true)} />
-          : active === "appointments"
-          ? <AppointmentsPage
-              walkIn={walkInPending}
-              onWalkInHandled={() => setWalkInPending(false)}
-              onWalkInDismissed={() => { setWalkInPending(false); setActive("dashboard"); }}
-            />
-          : active === "patients"
-          ? viewingPatient
-            ? <PetProfileView
-                pet={viewingPatient}
-                onBack={() => setViewingPatient(null)}
-                onViewOwner={() => { setViewingPatient(null); setActive("owners"); }}
-              />
-            : <PatientsPage
-                patients={patients}
-                loading={patientsLoading}
-                error={patientsError}
-                onViewOwner={() => setActive("owners")}
-                onViewPet={setViewingPatient}
-                onAddPatient={() => setShowAddPatient(true)}
-              />
-          : <PlaceholderPage tabId={active} />}
+        {renderPage()}
       </main>
 
       <OwnerDetailModal owner={viewing} onClose={() => setViewing(null)} />
 
       {showAddOwner && (
-        <AddOwnerModal
-          onClose={() => setShowAddOwner(false)}
-          onCreated={fetchOwners}
-        />
+        <AddOwnerModal onClose={() => setShowAddOwner(false)} onCreated={fetchOwners} />
       )}
-
       {showAddPatient && (
-        <AddPatientModal
-          owners={owners}
-          onClose={() => setShowAddPatient(false)}
-          onCreated={fetchPatients}
-        />
+        <AddPatientModal owners={owners} onClose={() => setShowAddPatient(false)} onCreated={fetchPatients} />
       )}
-
       <CheckInModal
         open={showCheckIn}
         onClose={() => setShowCheckIn(false)}

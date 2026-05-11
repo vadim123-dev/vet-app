@@ -1,13 +1,20 @@
 import React, { useState, useRef, useEffect } from "react";
 import { TeyaLogo } from "./TeyaLogo";
 
-export const NAV_TABS = [
-  { id: "dashboard",    label: "Dashboard",    icon: "home"     },
-  { id: "owners",       label: "Pet Owners",   icon: "user"     },
-  { id: "patients",     label: "Patients",     icon: "paw"      },
-  { id: "appointments", label: "Appointments", icon: "calendar" },
-  { id: "billing",      label: "Billing",      icon: "money"    },
+const ALL_TABS = [
+  { id: "dashboard",    label: "Dashboard",        icon: "home",     roles: ["admin", "vet", "coordinator"] },
+  { id: "owners",       label: "Pet Owners",        icon: "user",     roles: ["admin", "vet", "coordinator"] },
+  { id: "patients",     label: "Patients",          icon: "paw",      roles: ["admin", "vet", "coordinator"] },
+  { id: "appointments", label: "Appointments",      icon: "calendar", roles: ["admin", "coordinator"] },
+  { id: "billing",      label: "Billing",           icon: "money",    roles: ["admin", "coordinator"] },
+  { id: "users",        label: "User Management",   icon: "users",    roles: ["admin"] },
 ];
+
+export function getTabsForRole(roles = []) {
+  return ALL_TABS.filter(t => t.roles.some(r => roles.includes(r)));
+}
+
+export const NAV_TABS = ALL_TABS;
 
 function NavIcon({ name, size = 18, color = "currentColor" }) {
   const p = { width: size, height: size, viewBox: "0 0 24 24", fill: "none", stroke: color, strokeWidth: 1.8, strokeLinecap: "round", strokeLinejoin: "round" };
@@ -16,6 +23,8 @@ function NavIcon({ name, size = 18, color = "currentColor" }) {
       return <svg {...p}><path d="M3 11l9-7 9 7v9a2 2 0 0 1-2 2h-4v-7h-6v7H5a2 2 0 0 1-2-2v-9z"/></svg>;
     case "user":
       return <svg {...p}><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-7 8-7s8 3 8 7"/></svg>;
+    case "users":
+      return <svg {...p}><circle cx="9" cy="7" r="3"/><path d="M3 21c0-3.5 2.7-6 6-6s6 2.5 6 6"/><circle cx="17" cy="7" r="3"/><path d="M21 21c0-3.5-2-5.5-4-6"/></svg>;
     case "paw":
       return <svg {...p}><ellipse cx="12" cy="16" rx="4.5" ry="3.5"/><ellipse cx="6" cy="11" rx="1.7" ry="2.3"/><ellipse cx="18" cy="11" rx="1.7" ry="2.3"/><ellipse cx="9" cy="6.5" rx="1.5" ry="2"/><ellipse cx="15" cy="6.5" rx="1.5" ry="2"/></svg>;
     case "calendar":
@@ -32,12 +41,30 @@ function NavIcon({ name, size = 18, color = "currentColor" }) {
 
 export { NavIcon };
 
-export default function TopNav({ active, onChange, onLogout, staffName = "Dr. Sam Reyes", staffRole = "Veterinary staff" }) {
-  const initials = staffName.split(" ").map(p => p[0]).join("").slice(0, 2);
+const ROLE_LABELS = {
+  admin:       "Administrator",
+  vet:         "Veterinarian",
+  coordinator: "Coordinator",
+  customer:    "Customer",
+};
+
+function roleLabel(roles = []) {
+  for (const r of ["admin", "vet", "coordinator"]) {
+    if (roles.includes(r)) return ROLE_LABELS[r];
+  }
+  return "Staff";
+}
+
+export default function TopNav({ active, onChange, onLogout, user, shiftCheckedIn, onShiftToggle }) {
+  const roles     = user?.roles || [];
+  const staffName = user ? `${user.first_name} ${user.last_name}` : "Staff";
+  const staffRole = roleLabel(roles);
+  const tabs      = getTabsForRole(roles);
+  const initials  = staffName.split(" ").map(p => p[0]).join("").slice(0, 2);
+
   const [menuOpen, setMenuOpen] = useState(false);
   const chipRef = useRef(null);
 
-  // Close dropdown when clicking outside
   useEffect(() => {
     if (!menuOpen) return;
     const close = (e) => { if (!chipRef.current?.contains(e.target)) setMenuOpen(false); };
@@ -68,7 +95,7 @@ export default function TopNav({ active, onChange, onLogout, staffName = "Dr. Sa
 
       {/* Tabs */}
       <nav style={{ display: "flex", gap: 4, flex: 1, justifyContent: "center" }}>
-        {NAV_TABS.map(t => {
+        {tabs.map(t => {
           const isActive = active === t.id;
           return (
             <button
@@ -97,7 +124,6 @@ export default function TopNav({ active, onChange, onLogout, staffName = "Dr. Sa
 
       {/* Staff chip */}
       <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
-        {/* Bell */}
         <button aria-label="Notifications" style={{
           width: 38, height: 38, borderRadius: 11,
           background: "color-mix(in oklch, var(--ink) 4%, transparent)",
@@ -112,7 +138,6 @@ export default function TopNav({ active, onChange, onLogout, staffName = "Dr. Sa
           <span style={{ position: "absolute", top: 8, right: 9, width: 8, height: 8, borderRadius: 4, background: "var(--primary)", border: "2px solid var(--surface)" }} />
         </button>
 
-        {/* Settings */}
         <button aria-label="Settings" style={{
           width: 38, height: 38, borderRadius: 11,
           background: "color-mix(in oklch, var(--ink) 4%, transparent)",
@@ -123,7 +148,6 @@ export default function TopNav({ active, onChange, onLogout, staffName = "Dr. Sa
           <NavIcon name="gear" size={17} />
         </button>
 
-        {/* Avatar + name + dropdown */}
         <div ref={chipRef} style={{ position: "relative" }}>
           <button
             onClick={() => setMenuOpen(o => !o)}
@@ -147,6 +171,25 @@ export default function TopNav({ active, onChange, onLogout, staffName = "Dr. Sa
                 <div style={{ fontFamily: "Inter, sans-serif", fontSize: 13, fontWeight: 600, color: "var(--ink)" }}>{staffName}</div>
                 <div style={{ fontFamily: "Inter, sans-serif", fontSize: 11, color: "var(--muted)", marginTop: 1 }}>{staffRole}</div>
               </div>
+              <button
+                onClick={() => { setMenuOpen(false); onShiftToggle?.(); }}
+                style={{ width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "9px 12px", borderRadius: 9, border: "none", background: "none", cursor: "pointer", color: shiftCheckedIn ? "oklch(0.40 0.13 150)" : "oklch(0.35 0.12 240)", fontFamily: "Inter, sans-serif", fontSize: 13.5, fontWeight: 500, textAlign: "left" }}
+                onMouseEnter={e => e.currentTarget.style.background = shiftCheckedIn ? "oklch(0.95 0.04 150)" : "oklch(0.95 0.03 240)"}
+                onMouseLeave={e => e.currentTarget.style.background = "none"}
+              >
+                {shiftCheckedIn ? (
+                  <>
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9 12l2 2 4-4"/></svg>
+                    Check out of shift
+                  </>
+                ) : (
+                  <>
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg>
+                    Check in to shift
+                  </>
+                )}
+              </button>
+              <div style={{ height: 1, background: "var(--border)", margin: "4px 0" }} />
               <button
                 onClick={() => { setMenuOpen(false); onLogout?.(); }}
                 style={{ width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "9px 12px", borderRadius: 9, border: "none", background: "none", cursor: "pointer", color: "oklch(0.45 0.16 30)", fontFamily: "Inter, sans-serif", fontSize: 13.5, fontWeight: 500, textAlign: "left" }}

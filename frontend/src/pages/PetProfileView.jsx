@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { apiFetch } from "../api";
+import VisitModal from "./VisitModal";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -479,7 +480,7 @@ const APPT_STATUS_STYLE = {
   cancelled:{ label:"Cancelled", bg:"color-mix(in oklch,oklch(0.65 0.18 25)  20%,transparent)", color:"oklch(0.45 0.18 25)"  },
 };
 
-function AppointmentsTab({ appointments }) {
+function AppointmentsTab({ appointments, onViewVisit }) {
   const sorted=[...appointments].sort((a,b)=>new Date(b.appointment_date)-new Date(a.appointment_date));
   const cols=[
     { key:"datetime", label:"Date & Time"    },
@@ -496,7 +497,9 @@ function AppointmentsTab({ appointments }) {
       reason:  <span style={{fontFamily:"Inter, sans-serif",fontSize:13,color:"var(--ink)"}}>{a.notes||"—"}</span>,
       vet:     <span style={{fontFamily:"Inter, sans-serif",fontSize:13,color:"var(--ink)"}}>{a.vet_name||"Not assigned"}</span>,
       status:  <StatusBadge label={st.label} bg={st.bg} color={st.color}/>,
-      actions: <GhostBtn label="View Details"/>,
+      actions: a.status==="completed"
+        ? <button onClick={()=>onViewVisit?.(a)} style={{height:28,padding:"0 11px",borderRadius:7,border:"1px solid var(--border)",background:"var(--surface)",color:"var(--ink)",fontFamily:"Inter, sans-serif",fontSize:12,fontWeight:600,cursor:"pointer"}}>View Visit</button>
+        : <GhostBtn label="View Details"/>,
     };
   });
   return(
@@ -522,11 +525,16 @@ function LoadingSkeleton() {
 
 // ─── Main export ──────────────────────────────────────────────────────────────
 
-export default function PetProfileView({ pet, onBack, onViewOwner }) {
+export default function PetProfileView({ pet, user, onBack, onViewOwner }) {
+  const roles = user?.roles || [];
+  const isVet = roles.includes("vet");
+  const canWrite = isVet || roles.includes("admin");
+
   const [profile,    setProfile]    = useState(null);
   const [loading,    setLoading]    = useState(true);
   const [fetchError, setFetchError] = useState(null);
   const [activeTab,  setActiveTab]  = useState("overview");
+  const [visitModal, setVisitModal] = useState(null);
 
   useEffect(()=>{
     setLoading(true); setFetchError(null);
@@ -535,6 +543,21 @@ export default function PetProfileView({ pet, onBack, onViewOwner }) {
       .catch(e=>setFetchError(e.message))
       .finally(()=>setLoading(false));
   },[pet.id]);
+
+  const openVisit = async (appointment, readOnly) => {
+    let existing = null;
+    try {
+      existing = await apiFetch(`/visits/appointment/${appointment.id}`);
+    } catch { existing = null; }
+    setVisitModal({ appointment, existing: existing || null, readOnly });
+  };
+
+  const todayAppt = profile?.appointments?.find(a => {
+    if (a.status !== "scheduled") return false;
+    const d = new Date(a.appointment_date);
+    const now = new Date();
+    return d.toDateString() === now.toDateString();
+  });
 
   if(loading) return <LoadingSkeleton/>;
   if(fetchError||!profile) return(
@@ -559,14 +582,19 @@ export default function PetProfileView({ pet, onBack, onViewOwner }) {
           Patients
         </button>
         <div style={{display:"flex",gap:8}}>
-          <button style={{height:36,padding:"0 16px",borderRadius:10,border:"1px solid var(--border)",background:"var(--surface)",color:"var(--ink)",fontFamily:"Inter, sans-serif",fontSize:13,fontWeight:600,cursor:"pointer",display:"flex",alignItems:"center",gap:7}}>
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 1 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>
-            Edit
-          </button>
-          <button style={{height:36,padding:"0 16px",borderRadius:10,border:"none",background:"var(--primary)",color:"white",fontFamily:"Inter, sans-serif",fontSize:13,fontWeight:600,cursor:"pointer",display:"flex",alignItems:"center",gap:7,boxShadow:"0 4px 14px -6px var(--primary)"}}>
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>
-            Book Appointment
-          </button>
+          {canWrite && todayAppt && (
+            <button onClick={()=>openVisit(todayAppt, false)}
+              style={{height:36,padding:"0 16px",borderRadius:10,border:"none",background:"var(--primary)",color:"white",fontFamily:"Inter, sans-serif",fontSize:13,fontWeight:600,cursor:"pointer",display:"flex",alignItems:"center",gap:7,boxShadow:"0 4px 14px -6px var(--primary)"}}>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="10"/></svg>
+              Start Visit
+            </button>
+          )}
+          {!isVet && (
+            <button style={{height:36,padding:"0 16px",borderRadius:10,border:"none",background:"var(--primary)",color:"white",fontFamily:"Inter, sans-serif",fontSize:13,fontWeight:600,cursor:"pointer",display:"flex",alignItems:"center",gap:7,boxShadow:"0 4px 14px -6px var(--primary)"}}>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>
+              Book Appointment
+            </button>
+          )}
         </div>
       </div>
 
@@ -584,8 +612,20 @@ export default function PetProfileView({ pet, onBack, onViewOwner }) {
         {activeTab==="lab"           && <LabResultsTab/>}
         {activeTab==="prescriptions" && <PrescriptionsTab/>}
         {activeTab==="documents"     && <DocumentsTab/>}
-        {activeTab==="appointments"  && <AppointmentsTab   appointments={profile.appointments}/>}
+        {activeTab==="appointments"  && <AppointmentsTab appointments={profile.appointments} onViewVisit={a=>openVisit(a, true)}/>}
       </div>
+
+      {visitModal && (
+        <VisitModal
+          appointment={visitModal.appointment}
+          pet={profile}
+          vetUserId={null}
+          existingVisit={visitModal.existing}
+          readOnly={visitModal.readOnly && !canWrite}
+          onClose={()=>setVisitModal(null)}
+          onSaved={()=>{ setVisitModal(null); apiFetch(`/pets/${pet.id}`).then(d=>setProfile(d)).catch(()=>{}); }}
+        />
+      )}
     </div>
   );
 }

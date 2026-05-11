@@ -3,7 +3,7 @@ from werkzeug.security import generate_password_hash
 from flask import current_app
 from backend.utils import auth_utils
 import uuid
-from backend.db.repo import get_user_with_pets, get_all_users, add_user as repo_add_user
+from backend.db.repo import get_user_with_pets, get_all_users, add_user_with_role as repo_add_user
 
 
 class UserDataService:
@@ -37,25 +37,23 @@ class UserDataService:
         return get_user_with_pets(engine, user_name)
     
     def add_user(self, user_requester, req_json) -> dict:
-        """Add a new user to the database"""
+        """Add a new user to the database (admin only)."""
         engine = self._get_engine()
-        
-        user_name = req_json.get("user_name")
-        last_name = req_json.get("last_name")
-        first_name = req_json.get("first_name")
-        gender = req_json.get("gender")
-        city = req_json.get("city")
-        telephone = req_json.get("telephone")
 
-        # Validate required fields
+        user_name  = req_json.get("user_name")
+        last_name  = req_json.get("last_name")
+        first_name = req_json.get("first_name")
+        gender     = req_json.get("gender")
+        city       = req_json.get("city")
+        telephone  = req_json.get("telephone")
+        role       = req_json.get("role", "customer")
+
         if not all([user_name, last_name, first_name, gender, city, telephone]):
             raise ValueError("Missing required user fields")
 
-        # Generate temporary password
         temp_password = auth_utils.generate_strong_password(8)
         password_hash = generate_password_hash(temp_password)
 
-        # Add user to database
         new_user = repo_add_user(
             engine,
             user_name=user_name,
@@ -64,9 +62,10 @@ class UserDataService:
             gender=gender,
             city=city,
             telephone=telephone,
-            password_hash=password_hash
+            password_hash=password_hash,
+            role_code=role,
         )
-        
-        # Return user data with temporary password for admin to share
+
         new_user["temporary_password"] = temp_password
+        new_user["role"] = role
         return new_user
