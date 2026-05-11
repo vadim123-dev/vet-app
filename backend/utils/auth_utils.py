@@ -13,7 +13,7 @@ def generate_strong_password(length=12):
     ]
 
     alphabet = string.ascii_letters + string.digits + "!@#$%^&*"
-    password += [secrets.choice(alphabet) for _ in range(length - 4)] # run for size -4 and add random char from alphabet
+    password += [secrets.choice(alphabet) for _ in range(length - 5)] # run for size -4 and add random char from alphabet
 
     secrets.SystemRandom().shuffle(password)
 

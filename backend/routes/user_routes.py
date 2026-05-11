@@ -15,7 +15,7 @@ def _engine():
 
 
 def _caller_roles(identity: str) -> list[str]:
-    return repo.get_user_roles(_engine(), identity)
+return repo.get_user_roles(_engine(), identity)
 
 
 @users_bp.route("/authenticate", methods=["POST", "OPTIONS"])
