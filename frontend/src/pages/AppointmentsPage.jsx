@@ -503,6 +503,7 @@ export default function AppointmentsPage({ walkIn = false, onWalkInHandled, onWa
       procedure: "emergency",
     });
     onWalkInHandled?.();
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: fire once when loading clears, not on every appts/resources update
   }, [walkIn, resLoading, apptLoading]);
 
   const goDay = (delta) => setSelectedDate(d => {
