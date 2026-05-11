@@ -1,8 +1,6 @@
-from backend.models import User, Pet
 from werkzeug.security import generate_password_hash
 from flask import current_app
 from backend.utils import auth_utils
-import uuid
 from backend.db.repo import get_user_with_pets, get_all_users, add_user_with_role as repo_add_user
 
 

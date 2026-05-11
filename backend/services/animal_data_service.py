@@ -1,6 +1,5 @@
 import requests
 import re
-from backend.models.pet import Pet
 from backend.models.dog import Dog
 from backend.models.cat import Cat
 from backend.config import Config

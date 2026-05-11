@@ -2,7 +2,6 @@ import os
 from flask import Flask
 from flask_cors import CORS
 from flask_jwt_extended import JWTManager
-from backend.services.animal_data_service import AnimalDataService
 from backend.routes.user_routes import users_bp
 from backend.routes.pet_routes import pets_bp
 from backend.routes.appointment_routes import appointments_bp
@@ -11,7 +10,6 @@ from backend.routes.shift_routes import shifts_bp
 from backend.routes.dashboard_routes import dashboard_bp
 from backend.config import Config
 from backend.db.db_config import DBConfig, create_db_engine
-from backend.db.repo import get_user_with_pets
 from dotenv import load_dotenv
 
 jwt = JWTManager()

@@ -401,7 +401,7 @@ export default function PatientsPage({ patients = [], loading = false, error = n
             {loading && [0,1,2,3].map(i => <SkeletonRow key={i} />)}
 
             {!loading && rows.map(p => {
-              const tc = TYPE_COLOR[p.type_code] || TYPE_COLOR.other;
+              const _tc = TYPE_COLOR[p.type_code] || TYPE_COLOR.other;
               return (
                 <tr key={p.id}
                   onMouseEnter={()=>setHovered(p.id)}
