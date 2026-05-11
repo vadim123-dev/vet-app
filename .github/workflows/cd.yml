@@ -78,11 +78,37 @@ jobs:
             -H "Content-Type: application/json" \
             -d '{"user_name":"Admin","password":"Admin"}' | grep access_token
 
+      - name: Build frontend image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./frontend
+          file: ./frontend/Dockerfile.prod
+          push: false
+          load: true
+          build-args: VITE_API_URL=${{ secrets.VITE_API_URL }}
+          tags: vet-frontend:${{ github.sha }}
+
+      - name: Start frontend container
+        run: |
+          docker run -d --name vet-frontend-smoke \
+            --network=host \
+            vet-frontend:${{ github.sha }}
+
+      - name: Smoke test — frontend serves HTML
+        run: |
+          for i in $(seq 1 10); do
+            curl -sf http://localhost:80 | grep -i "html" && exit 0
+            sleep 2
+          done
+          docker logs vet-frontend-smoke
+          exit 1
+
       - name: Stop and remove containers
         if: always()
         run: |
           docker rm -f vet-smoke || true
           docker rm -f vet-mysql || true
+          docker rm -f vet-frontend-smoke || true
 
   # ── Job 2: Push all 3 images to Docker Hub (amd64 + arm64) ──────────────────
   push-to-dockerhub:
