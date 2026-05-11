@@ -288,79 +288,74 @@ function NextUpTimeline({ appts, lanes, rooms, now }) {
 
 // ─── Check-in queue ───────────────────────────────────────────────────────────
 
-function CheckinQueue({ appts, lanes, now }) {
-  const sorted = [...appts]
-    .filter(a => a.status !== "cancelled")
-    .sort((a, b) => apptStartMins(a) - apptStartMins(b))
-    .slice(0, 10);
+function CheckinQueue({ appts }) {
+  const arrived = [...appts]
+    .filter(a => a.status === "waiting")
+    .sort((a, b) => apptStartMins(a) - apptStartMins(b));
+
+  if (arrived.length === 0) {
+    return (
+      <div style={{ padding: "20px 10px", fontFamily: "Inter, sans-serif", fontSize: 14, color: "var(--muted)", textAlign: "center", fontStyle: "italic" }}>
+        No patients in the waiting room
+      </div>
+    );
+  }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 2, marginLeft: -8, marginRight: -8 }}>
-      {sorted.length === 0 && (
-        <div style={{ padding: "20px 10px", fontFamily: "Inter, sans-serif", fontSize: 14, color: "var(--muted)", textAlign: "center", fontStyle: "italic" }}>No appointments today</div>
-      )}
-      {sorted.map(a => {
-        const proc = PROCEDURES[a.procedure_type] || PROCEDURES.wellness;
-        const s       = apptStartMins(a);
-        const waiting = a.status === "waiting";
-        const done    = a.status === "completed";
-        const ongoing = !done && !waiting && s <= now && s + (a.duration_mins || 30) > now;
-        const soon    = !done && !waiting && !ongoing && s > now && s - now <= 30;
-        const future  = !done && !waiting && !ongoing && s > now;
-
-        const { pillLabel, pillTone } = waiting  ? { pillLabel: "Waiting",  pillTone: "amber"   }
-          : done    ? { pillLabel: "Done",     pillTone: "green"   }
-          : ongoing  ? { pillLabel: "In room",  pillTone: "primary" }
-          : soon     ? { pillLabel: "Soon",     pillTone: "amber"   }
-          : future   ? { pillLabel: "Expected", pillTone: "neutral" }
-          :            { pillLabel: "Done",     pillTone: "green"   };
-
-        const loc = lanes.find(l => l.vetId && l.vetId === a.vet_id)?.label
-                 || lanes.find(l => l.roomId && l.roomId === a.room_id)?.label
-                 || "—";
-
-        return (
-          <div key={a.id} style={{
-            display: "grid", gridTemplateColumns: "56px 1fr auto", alignItems: "center", gap: 12,
-            padding: "8px 10px", borderRadius: 10,
-            background: waiting ? "color-mix(in oklch, oklch(0.85 0.14 80) 18%, transparent)" : ongoing ? "color-mix(in oklch, var(--primary) 6%, transparent)" : "transparent",
-          }}>
-            <div style={{ fontFamily: "Inter, sans-serif", fontSize: 12.5, fontWeight: 600, color: s > now ? "var(--muted)" : "var(--ink)", fontVariantNumeric: "tabular-nums" }}>
-              {fmtTimeMins(s)}
+    <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+      {arrived.map(a => (
+        <div key={a.id} style={{
+          display: "grid", gridTemplateColumns: "1fr auto", alignItems: "center", gap: 12,
+          padding: "10px 10px", borderRadius: 10,
+          background: "color-mix(in oklch, oklch(0.75 0.13 150) 10%, transparent)",
+          borderLeft: "3px solid oklch(0.65 0.13 150)",
+          marginBottom: 2,
+        }}>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontFamily: "Inter, sans-serif", fontSize: 13.5, fontWeight: 600, color: "var(--ink)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+              {a.pet.name}
+              <span style={{ fontWeight: 400, color: "var(--muted)" }}> · {a.owner.first_name} {a.owner.last_name}</span>
             </div>
-            <div style={{ minWidth: 0 }}>
-              <div style={{ fontFamily: "Inter, sans-serif", fontSize: 13.5, fontWeight: 600, color: "var(--ink)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                <span style={{ marginRight: 5 }}>{proc.icon}</span>{a.pet.name}
-                <span style={{ fontWeight: 400, color: "var(--muted)" }}> · {a.owner.last_name}</span>
-              </div>
-              <div style={{ fontFamily: "Inter, sans-serif", fontSize: 11.5, color: "var(--muted)", marginTop: 1 }}>
-                {proc.label} · {loc}
-              </div>
+            <div style={{ fontFamily: "Inter, sans-serif", fontSize: 12, color: "var(--muted)", marginTop: 2 }}>
+              {a.vet_name || "Unassigned"} · {fmtTimeMins(apptStartMins(a))}
             </div>
-            <DashPill tone={pillTone}>{pillLabel}</DashPill>
           </div>
-        );
-      })}
+          <DashPill tone="green">Arrived</DashPill>
+        </div>
+      ))}
     </div>
   );
 }
 
 // ─── Boarders ─────────────────────────────────────────────────────────────────
 
-function BoardersList() {
-  const sm = { "stable": ["Stable", "green"], "monitoring": ["Monitoring", "amber"], "ready-soon": ["Ready soon", "primary"] };
+const TYPE_EMOJI = { dog: "🐕", cat: "🐱", rabbit: "🐰", parrot: "🦜", reptile: "🦎", other: "🐾" };
+const HOSP_STATUS = {
+  stable:     ["Stable",      "green"  ],
+  monitoring: ["Monitoring",  "amber"  ],
+  critical:   ["Critical",    "red"    ],
+  ready:      ["Ready",       "primary"],
+};
+
+function BoardersList({ boarders, loading }) {
+  if (loading) return (
+    <div style={{ fontFamily: "Inter, sans-serif", fontSize: 13.5, color: "var(--muted)", padding: "12px 0" }}>Loading…</div>
+  );
+  if (!boarders.length) return (
+    <div style={{ fontFamily: "Inter, sans-serif", fontSize: 13.5, color: "var(--muted)", fontStyle: "italic", padding: "4px 0" }}>No patients currently hospitalized</div>
+  );
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-      {DASH_BOARDERS.map(b => {
-        const [label, tone] = sm[b.status] || ["Stable", "neutral"];
+      {boarders.map(b => {
+        const [label, tone] = HOSP_STATUS[b.status] || ["Stable", "neutral"];
         return (
           <div key={b.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "4px 0" }}>
             <div style={{ width: 36, height: 36, borderRadius: 10, background: "color-mix(in oklch, var(--accent) 40%, var(--surface))", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, flexShrink: 0 }}>
-              {b.emoji}
+              {TYPE_EMOJI[b.pet_type] || "🐾"}
             </div>
             <div style={{ flex: 1, minWidth: 0, lineHeight: 1.25 }}>
               <div style={{ fontFamily: "Inter, sans-serif", fontSize: 13.5, fontWeight: 600, color: "var(--ink)" }}>
-                {b.name} <span style={{ fontWeight: 400, color: "var(--muted)" }}>· {b.room}</span>
+                {b.pet_name} <span style={{ fontWeight: 400, color: "var(--muted)" }}>· {b.room}</span>
               </div>
               <div style={{ fontFamily: "Inter, sans-serif", fontSize: 11.5, color: "var(--muted)" }}>{b.reason} · {b.caretaker}</div>
             </div>
@@ -374,22 +369,52 @@ function BoardersList() {
 
 // ─── Staff on shift ───────────────────────────────────────────────────────────
 
-function StaffOnShift() {
-  const sm = { "available": ["Available", "green"], "in-room": ["In room", "primary"], "with-boarder": ["On rounds", "primary"], "off": ["On break", "neutral"] };
+const ROLE_AVATAR_COLORS = ["oklch(0.6 0.14 38)", "oklch(0.55 0.13 220)", "oklch(0.58 0.12 280)", "oklch(0.62 0.12 150)", "oklch(0.60 0.13 60)"];
+const ROLE_LABEL = { admin: "Administrator", vet: "Veterinarian", coordinator: "Coordinator" };
+
+function roleDisplay(roles = []) {
+  for (const r of ["vet", "admin", "coordinator"]) {
+    if (roles.includes(r)) return ROLE_LABEL[r] || r;
+  }
+  return "Staff";
+}
+
+function avatarColor(name = "") {
+  const idx = (name.charCodeAt(0) + (name.charCodeAt(1) || 0)) % ROLE_AVATAR_COLORS.length;
+  return ROLE_AVATAR_COLORS[idx];
+}
+
+function fmtCheckinTime(isoStr) {
+  if (!isoStr) return "";
+  return new Date(isoStr).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true });
+}
+
+function StaffOnShift({ staff, loading }) {
+  if (loading) return (
+    <div style={{ fontFamily: "Inter, sans-serif", fontSize: 13.5, color: "var(--muted)", padding: "12px 0" }}>Loading…</div>
+  );
+  if (!staff.length) return (
+    <div style={{ fontFamily: "Inter, sans-serif", fontSize: 13.5, color: "var(--muted)", fontStyle: "italic", padding: "4px 0" }}>No staff checked in yet today</div>
+  );
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-      {DASH_STAFF.map(s => {
-        const [label, tone] = sm[s.status] || ["Available", "neutral"];
+      {staff.map(s => {
+        const initials = `${s.first_name[0]}${s.last_name[0]}`;
+        const checkedOut = !!s.checked_out_at;
         return (
-          <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "4px 0" }}>
-            <div style={{ width: 32, height: 32, borderRadius: "50%", background: s.color, color: "white", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "Inter, sans-serif", fontSize: 11.5, fontWeight: 600, flexShrink: 0 }}>
-              {s.initials}
+          <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "4px 0", opacity: checkedOut ? 0.55 : 1 }}>
+            <div style={{ width: 32, height: 32, borderRadius: "50%", background: avatarColor(s.first_name), color: "white", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "Inter, sans-serif", fontSize: 11.5, fontWeight: 600, flexShrink: 0 }}>
+              {initials}
             </div>
             <div style={{ flex: 1, minWidth: 0, lineHeight: 1.25 }}>
-              <div style={{ fontFamily: "Inter, sans-serif", fontSize: 13, fontWeight: 600, color: "var(--ink)" }}>{s.name}</div>
-              <div style={{ fontFamily: "Inter, sans-serif", fontSize: 11.5, color: "var(--muted)" }}>{s.role} · {s.shift}</div>
+              <div style={{ fontFamily: "Inter, sans-serif", fontSize: 13, fontWeight: 600, color: "var(--ink)" }}>
+                {s.roles.includes("vet") ? `Dr. ${s.first_name} ${s.last_name}` : `${s.first_name} ${s.last_name}`}
+              </div>
+              <div style={{ fontFamily: "Inter, sans-serif", fontSize: 11.5, color: "var(--muted)" }}>
+                {roleDisplay(s.roles)} · in {fmtCheckinTime(s.checked_in_at)}{checkedOut ? ` · out ${fmtCheckinTime(s.checked_out_at)}` : ""}
+              </div>
             </div>
-            <DashPill tone={tone}>{label}</DashPill>
+            <DashPill tone={checkedOut ? "neutral" : "green"}>{checkedOut ? "Left" : "In"}</DashPill>
           </div>
         );
       })}
@@ -399,21 +424,30 @@ function StaffOnShift() {
 
 // ─── Reminders ────────────────────────────────────────────────────────────────
 
-function RemindersList() {
-  const sorted = [...DASH_REMINDERS].sort((a, b) => ({ overdue: 0, today: 1, soon: 2 }[a.priority] ?? 3) - ({ overdue: 0, today: 1, soon: 2 }[b.priority] ?? 3));
-  const sm = { overdue: ["Overdue", "red"], today: ["Today", "amber"], soon: ["Soon", "neutral"] };
+const TYPE_ICON = { vaccine: "💉", call: "📞", followup: "📋", general: "🔔" };
+const PRIORITY_SM = { overdue: ["Overdue", "red"], today: ["Today", "amber"], soon: ["Soon", "neutral"] };
+
+function RemindersList({ reminders, loading }) {
+  if (loading) return (
+    <div style={{ fontFamily: "Inter, sans-serif", fontSize: 13.5, color: "var(--muted)", padding: "12px 0" }}>Loading…</div>
+  );
+  if (!reminders.length) return (
+    <div style={{ fontFamily: "Inter, sans-serif", fontSize: 13.5, color: "var(--muted)", fontStyle: "italic", padding: "4px 0" }}>No pending reminders</div>
+  );
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-      {sorted.map(r => {
-        const [label, tone] = sm[r.priority] || ["Soon", "neutral"];
+      {reminders.map(r => {
+        const [label, tone] = PRIORITY_SM[r.priority] || ["Soon", "neutral"];
         return (
           <div key={r.id} style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "4px 0" }}>
             <div style={{ width: 30, height: 30, borderRadius: 8, background: "color-mix(in oklch, var(--ink) 4%, transparent)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, flexShrink: 0 }}>
-              {r.icon}
+              {TYPE_ICON[r.type] || "🔔"}
             </div>
             <div style={{ flex: 1, minWidth: 0, lineHeight: 1.3 }}>
               <div style={{ fontFamily: "Inter, sans-serif", fontSize: 13, color: "var(--ink)", fontWeight: 500 }}>{r.note}</div>
-              <div style={{ fontFamily: "Inter, sans-serif", fontSize: 11.5, color: "var(--muted)", marginTop: 1 }}>{r.patient} · {r.owner}</div>
+              <div style={{ fontFamily: "Inter, sans-serif", fontSize: 11.5, color: "var(--muted)", marginTop: 1 }}>
+                {r.pet_name}{r.owner ? ` · ${r.owner}` : ""}
+              </div>
             </div>
             <DashPill tone={tone}>{label}</DashPill>
           </div>
@@ -476,14 +510,28 @@ function ActivityFeed({ extra = [] }) {
 
 // ─── Main page ────────────────────────────────────────────────────────────────
 
-export default function DashboardPage({ onNavigate, onCheckIn, activityFeed = [], refreshKey = 0 }) {
+export default function DashboardPage({ user, onNavigate, onCheckIn, activityFeed = [], refreshKey = 0 }) {
+  const roles  = user?.roles || [];
+  const isVet  = roles.includes("vet");
+
   const [, setTick] = useState(0);
   const now = nowMins();
-  const [currentUser, setCurrentUser] = useState(null);
+  const [currentUser, setCurrentUser] = useState(user || null);
   const [appts,       setAppts]       = useState([]);
   const [apptLoading, setApptLoading] = useState(true);
   const [vets,        setVets]        = useState([]);
   const [rooms,       setRooms]       = useState([]);
+  const [boarders,    setBoarders]    = useState([]);
+  const [boardersLoading, setBoardersLoading] = useState(true);
+  const [reminders,   setReminders]   = useState([]);
+  const [remindersLoading, setRemindersLoading] = useState(true);
+  const [staff,       setStaff]       = useState([]);
+  const [staffLoading, setStaffLoading] = useState(true);
+
+  const DEFAULT_ORDER = ["checkin", "hospitalized", "reminders", "whosin"];
+  const [widgetOrder, setWidgetOrder] = useState(DEFAULT_ORDER);
+  const [dragIdx,     setDragIdx]     = useState(null);
+  const [overIdx,     setOverIdx]     = useState(null);
 
   useEffect(() => {
     const id = setInterval(() => setTick(t => t + 1), 30000);
@@ -491,14 +539,31 @@ export default function DashboardPage({ onNavigate, onCheckIn, activityFeed = []
   }, []);
 
   useEffect(() => {
-    apiFetch("/users/current")
-      .then(d => setCurrentUser(d?.user || d))
-      .catch(() => {});
+    if (!user) {
+      apiFetch("/users/current")
+        .then(d => setCurrentUser(d?.user || d))
+        .catch(() => {});
+    }
   }, []);
 
   useEffect(() => {
     apiFetch("/appointments/resources")
       .then(d => { setVets(d.vets || []); setRooms(d.rooms || []); })
+      .catch(() => {});
+    apiFetch("/appointments/hospitalizations")
+      .then(d => setBoarders(Array.isArray(d) ? d : []))
+      .catch(() => {})
+      .finally(() => setBoardersLoading(false));
+    apiFetch("/appointments/reminders")
+      .then(d => setReminders(Array.isArray(d) ? d : []))
+      .catch(() => {})
+      .finally(() => setRemindersLoading(false));
+    apiFetch("/shifts/today")
+      .then(d => setStaff(Array.isArray(d) ? d : []))
+      .catch(() => {})
+      .finally(() => setStaffLoading(false));
+    apiFetch("/dashboard/layout")
+      .then(d => { if (Array.isArray(d?.widget_order)) setWidgetOrder(d.widget_order); })
       .catch(() => {});
     setApptLoading(true);
     apiFetch(`/appointments/?date=${isoDateToday()}`)
@@ -507,10 +572,20 @@ export default function DashboardPage({ onNavigate, onCheckIn, activityFeed = []
       .finally(() => setApptLoading(false));
   }, [refreshKey]);
 
+  const vetResource = useMemo(() => {
+    if (!isVet || !vets.length || !user?.user_name) return null;
+    return vets.find(v => v.user_name === user.user_name) || null;
+  }, [isVet, vets, user]);
+
+  const visibleAppts = useMemo(() => {
+    if (!isVet || !vetResource) return appts;
+    return appts.filter(a => a.vet_id === vetResource.id);
+  }, [appts, isVet, vetResource]);
+
   const lanes = useMemo(() => buildLanes(vets, rooms), [vets, rooms]);
 
   const { total, onSite, expected, nextAppt } = useMemo(() => {
-    const active = appts.filter(a => a.status !== "cancelled");
+    const active = visibleAppts.filter(a => a.status !== "cancelled");
     const total  = active.length;
     const onSite = active.filter(a => {
       if (a.status === "waiting") return true;
@@ -541,6 +616,86 @@ export default function DashboardPage({ onNavigate, onCheckIn, activityFeed = []
   });
 
   const nextProc = nextAppt ? (PROCEDURES[nextAppt.procedure_type] || PROCEDURES.wellness) : null;
+
+  const saveOrder = (order) => {
+    apiFetch("/dashboard/layout", { method: "PUT", body: { widget_order: order } }).catch(() => {});
+  };
+
+  const handleDragStart = (e, idx) => {
+    setDragIdx(idx);
+    e.dataTransfer.effectAllowed = "move";
+  };
+  const handleDragOver = (e, idx) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    setOverIdx(idx);
+  };
+  const handleDrop = (e, idx) => {
+    e.preventDefault();
+    if (dragIdx === null || dragIdx === idx) { setDragIdx(null); setOverIdx(null); return; }
+    const next = [...widgetOrder];
+    const [removed] = next.splice(dragIdx, 1);
+    next.splice(idx, 0, removed);
+    setWidgetOrder(next);
+    saveOrder(next);
+    setDragIdx(null);
+    setOverIdx(null);
+  };
+  const handleDragEnd = () => { setDragIdx(null); setOverIdx(null); };
+
+  const GRIP = (
+    <div style={{ cursor: "grab", color: "var(--muted)", display: "flex", alignItems: "center", padding: "2px 0" }} title="Drag to rearrange">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="9" cy="5" r="1" fill="currentColor" stroke="none"/><circle cx="15" cy="5" r="1" fill="currentColor" stroke="none"/><circle cx="9" cy="12" r="1" fill="currentColor" stroke="none"/><circle cx="15" cy="12" r="1" fill="currentColor" stroke="none"/><circle cx="9" cy="19" r="1" fill="currentColor" stroke="none"/><circle cx="15" cy="19" r="1" fill="currentColor" stroke="none"/></svg>
+    </div>
+  );
+
+  const WIDGET_CONTENT_HEIGHT = 260;
+
+  const renderWidget = (id, idx) => {
+    const dragging  = dragIdx === idx;
+    const isTarget  = overIdx === idx && dragIdx !== idx;
+    const cardStyle = {
+      opacity:   dragging ? 0.45 : 1,
+      outline:   isTarget ? "2px dashed var(--primary)" : "none",
+      outlineOffset: 2,
+      transition: "opacity 120ms ease",
+    };
+    switch (id) {
+      case "checkin":
+        return (
+          <div key={id} draggable onDragStart={e => handleDragStart(e, idx)} onDragOver={e => handleDragOver(e, idx)} onDrop={e => handleDrop(e, idx)} onDragEnd={handleDragEnd} style={cardStyle}>
+            <DashCard eyebrow="Today" title="Check-in queue" action={GRIP}>
+              <div style={{ height: WIDGET_CONTENT_HEIGHT, overflowY: "auto", overflowX: "hidden" }}><CheckinQueue appts={visibleAppts} /></div>
+            </DashCard>
+          </div>
+        );
+      case "hospitalized":
+        return (
+          <div key={id} draggable onDragStart={e => handleDragStart(e, idx)} onDragOver={e => handleDragOver(e, idx)} onDrop={e => handleDrop(e, idx)} onDragEnd={handleDragEnd} style={cardStyle}>
+            <DashCard eyebrow="In our care" title="Boarding & hospitalized" action={GRIP}>
+              <div style={{ height: WIDGET_CONTENT_HEIGHT, overflowY: "auto" }}><BoardersList boarders={boarders} loading={boardersLoading} /></div>
+            </DashCard>
+          </div>
+        );
+      case "reminders":
+        return (
+          <div key={id} draggable onDragStart={e => handleDragStart(e, idx)} onDragOver={e => handleDragOver(e, idx)} onDrop={e => handleDrop(e, idx)} onDragEnd={handleDragEnd} style={cardStyle}>
+            <DashCard eyebrow="Reminders" title="Follow-ups due" action={GRIP}>
+              <div style={{ height: WIDGET_CONTENT_HEIGHT, overflowY: "auto" }}><RemindersList reminders={reminders} loading={remindersLoading} /></div>
+            </DashCard>
+          </div>
+        );
+      case "whosin":
+        return (
+          <div key={id} draggable onDragStart={e => handleDragStart(e, idx)} onDragOver={e => handleDragOver(e, idx)} onDrop={e => handleDrop(e, idx)} onDragEnd={handleDragEnd} style={cardStyle}>
+            <DashCard eyebrow="Today" title="Who's in" action={GRIP}>
+              <div style={{ height: WIDGET_CONTENT_HEIGHT, overflowY: "auto" }}><StaffOnShift staff={staff} loading={staffLoading} /></div>
+            </DashCard>
+          </div>
+        );
+      default: return null;
+    }
+  };
 
   return (
     <div style={{ padding: "32px 28px 80px", maxWidth: 1480, margin: "0 auto" }}>
@@ -592,9 +747,11 @@ export default function DashboardPage({ onNavigate, onCheckIn, activityFeed = []
           tone="amber"
         />
         <HeroTile
-          label="Boarders"
-          value={DASH_BOARDERS.length}
-          hint="1 in ICU"
+          label="In our care"
+          value={boardersLoading ? "…" : boarders.length}
+          hint={boarders.filter(b => b.status === "monitoring" || b.status === "critical").length > 0
+            ? `${boarders.filter(b => b.status === "monitoring" || b.status === "critical").length} monitoring`
+            : "all stable"}
           tone="neutral"
         />
       </div>
@@ -611,38 +768,23 @@ export default function DashboardPage({ onNavigate, onCheckIn, activityFeed = []
         ) : lanes.length === 0 ? (
           <div style={{ padding: "24px 0", fontFamily: "Inter, sans-serif", fontSize: 13.5, color: "var(--muted)", textAlign: "center", fontStyle: "italic" }}>No resources loaded</div>
         ) : (
-          <NextUpTimeline appts={appts} lanes={lanes} rooms={rooms} now={now} />
+          <NextUpTimeline appts={visibleAppts} lanes={lanes} rooms={rooms} now={now} />
         )}
       </DashCard>
 
-      {/* 2-column grid */}
-      <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1.4fr) minmax(0,1fr)", gap: 18, marginTop: 18, alignItems: "flex-start" }}>
+      {/* Draggable 2-column widget grid */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18, marginTop: 18 }}>
+        {widgetOrder.map((id, idx) => renderWidget(id, idx))}
+      </div>
 
-        {/* Left column */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-          <DashCard eyebrow="Today" title="Check-in queue" action={<DashSeeAll label="View all" onClick={() => onNavigate?.("appointments")} />}>
-            <CheckinQueue appts={appts} lanes={lanes} now={now} />
-          </DashCard>
-          <DashCard eyebrow="In our care" title="Boarding & hospitalized" action={<DashSeeAll label="Ward map" />}>
-            <BoardersList />
-          </DashCard>
-        </div>
-
-        {/* Right column */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-          <DashCard eyebrow="Reminders" title="Follow-ups due" action={<DashSeeAll label="Recall list" />}>
-            <RemindersList />
-          </DashCard>
-          <DashCard eyebrow="Today" title="Who's in" action={<DashSeeAll label="Roster" />}>
-            <StaffOnShift />
-          </DashCard>
-          <DashCard eyebrow="Inventory" title="Low stock & expiring" action={<DashSeeAll label="Order" />}>
-            <InventoryList />
-          </DashCard>
-          <DashCard eyebrow="Stream" title="Recent activity" action={<DashSeeAll label="Audit log" />}>
-            <ActivityFeed extra={activityFeed} />
-          </DashCard>
-        </div>
+      {/* Static widgets below */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18, marginTop: 18 }}>
+        <DashCard eyebrow="Inventory" title="Low stock & expiring" action={<DashSeeAll label="Order" />}>
+          <InventoryList />
+        </DashCard>
+        <DashCard eyebrow="Stream" title="Recent activity" action={<DashSeeAll label="Audit log" />}>
+          <ActivityFeed extra={activityFeed} />
+        </DashCard>
       </div>
     </div>
   );

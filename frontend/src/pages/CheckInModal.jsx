@@ -161,6 +161,11 @@ export default function CheckInModal({ open, onClose, patients = [], owners = []
   const todayAppt     = activePet ? apptFor(activePet) : null;
   const ownerSiblings = activePet ? siblingsFor(activePet) : [];
 
+  const tooEarly = todayAppt && (() => {
+    const apptTime = new Date(todayAppt.appointment_date);
+    return (apptTime - new Date()) > 15 * 60 * 1000;
+  })();
+
   const handleArrived = async () => {
     if (!todayAppt) return;
     setCheckingIn(true);
@@ -289,7 +294,11 @@ export default function CheckInModal({ open, onClose, patients = [], owners = []
 
             {/* Actions */}
             <div style={{ padding: "16px 20px 20px", display: "flex", gap: 8 }}>
-              {todayAppt && todayAppt.status !== "waiting" ? (
+              {todayAppt && todayAppt.status !== "waiting" && tooEarly ? (
+                <div style={{ flex: 1, height: 44, borderRadius: 12, background: "color-mix(in oklch, oklch(0.78 0.15 80) 18%, transparent)", border: "1px solid color-mix(in oklch, oklch(0.78 0.15 80) 35%, transparent)", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, fontFamily: "Inter, sans-serif", fontSize: 14, fontWeight: 600, color: "oklch(0.42 0.13 75)" }}>
+                  ⏰ Appointment not yet due
+                </div>
+              ) : todayAppt && todayAppt.status !== "waiting" ? (
                 <button
                   onClick={handleArrived}
                   disabled={checkingIn}
@@ -353,14 +362,98 @@ export default function CheckInModal({ open, onClose, patients = [], owners = []
               ))}
             </div>
 
-            {!query && (
-              <div style={{ padding: "24px 20px", display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
-                <div style={{ fontSize: 32 }}>🔍</div>
-                <div style={{ fontFamily: "Inter, sans-serif", fontSize: 14, color: "var(--muted)", textAlign: "center" }}>
-                  Search by patient name, owner name, or phone number
+            {!query && (() => {
+              const now = new Date();
+              const sorted = [...todayAppts]
+                .filter(a => a.status !== "cancelled" && a.status !== "waiting" && a.status !== "completed")
+                .sort((a, b) => new Date(a.appointment_date) - new Date(b.appointment_date));
+
+              if (sorted.length === 0) return (
+                <div style={{ padding: "24px 20px", display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
+                  <div style={{ fontSize: 32 }}>📋</div>
+                  <div style={{ fontFamily: "Inter, sans-serif", fontSize: 14, color: "var(--muted)", textAlign: "center" }}>
+                    No appointments scheduled for today
+                  </div>
                 </div>
-              </div>
-            )}
+              );
+
+              return (
+                <div>
+                  <div style={{ padding: "8px 20px 6px", fontFamily: "Inter, sans-serif", fontSize: 11, fontWeight: 600, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.07em" }}>
+                    Today's schedule — {sorted.length} appointment{sorted.length !== 1 ? "s" : ""}
+                  </div>
+                  <div style={{ borderTop: "1px solid var(--border)", maxHeight: 340, overflowY: "auto" }}>
+                    {sorted.map(appt => {
+                      const patient = patients.find(p => p.id === appt.pet.id);
+                      const proc    = PROCEDURES[appt.procedure_type] || PROCEDURES.wellness;
+                      const start   = new Date(appt.appointment_date);
+                      const isPast  = start < now;
+                      const isNow   = start <= now && new Date(start.getTime() + appt.duration_mins * 60000) > now;
+
+                      return (
+                        <button
+                          key={appt.id}
+                          type="button"
+                          onClick={() => patient && handleSelect(patient)}
+                          disabled={!patient}
+                          style={{
+                            width: "100%", display: "flex", alignItems: "center", gap: 14,
+                            padding: "11px 20px", background: "transparent", border: "none",
+                            borderBottom: "1px solid color-mix(in oklch, var(--border) 60%, transparent)",
+                            cursor: patient ? "pointer" : "default", textAlign: "left",
+                            opacity: isPast && !isNow ? 0.55 : 1,
+                            transition: "background 80ms",
+                          }}
+                          onMouseEnter={e => { if (patient) e.currentTarget.style.background = "color-mix(in oklch, var(--primary) 5%, transparent)"; }}
+                          onMouseLeave={e => e.currentTarget.style.background = "transparent"}
+                        >
+                          {/* Time column */}
+                          <div style={{ width: 54, flexShrink: 0, textAlign: "right" }}>
+                            <div style={{ fontFamily: "Inter, sans-serif", fontSize: 13, fontWeight: 700, color: isNow ? "var(--primary)" : "var(--ink)" }}>
+                              {start.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true })}
+                            </div>
+                            {isNow && (
+                              <div style={{ fontFamily: "Inter, sans-serif", fontSize: 10, fontWeight: 600, color: "var(--primary)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Now</div>
+                            )}
+                          </div>
+
+                          {/* Procedure icon */}
+                          <div style={{ width: 36, height: 36, borderRadius: 10, background: proc.tone, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, flexShrink: 0 }}>
+                            {proc.icon}
+                          </div>
+
+                          {/* Patient info */}
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontFamily: "Inter, sans-serif", fontSize: 14, fontWeight: 600, color: "var(--ink)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                              {appt.pet.name}
+                              <span style={{ fontWeight: 400, color: "var(--muted)" }}> · {appt.owner.first_name} {appt.owner.last_name}</span>
+                            </div>
+                            <div style={{ fontFamily: "Inter, sans-serif", fontSize: 12, color: "var(--muted)", marginTop: 1 }}>
+                              {proc.label} · {appt.vet_name || "Unassigned"}{appt.room_name ? ` · ${appt.room_name}` : ""}
+                            </div>
+                          </div>
+
+                          {/* Status badge */}
+                          <div style={{ flexShrink: 0 }}>
+                            {appt.status === "waiting" ? (
+                              <span style={{ padding: "3px 9px", borderRadius: 20, background: "color-mix(in oklch, oklch(0.75 0.13 150) 18%, transparent)", color: "oklch(0.38 0.12 150)", fontFamily: "Inter, sans-serif", fontSize: 11.5, fontWeight: 600 }}>
+                                Waiting
+                              </span>
+                            ) : appt.status === "completed" ? (
+                              <span style={{ padding: "3px 9px", borderRadius: 20, background: "color-mix(in oklch, var(--ink) 8%, transparent)", color: "var(--muted)", fontFamily: "Inter, sans-serif", fontSize: 11.5, fontWeight: 600 }}>
+                                Done
+                              </span>
+                            ) : (
+                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" strokeWidth="1.8" strokeLinecap="round"><path d="M9 18l6-6-6-6"/></svg>
+                            )}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         )}
       </div>

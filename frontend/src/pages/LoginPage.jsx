@@ -118,7 +118,7 @@ export default function LoginPage() {
         body: { user_name: username, password },
       });
       if (!data?.access_token) throw new Error("Login failed — please try again.");
-      login(data.access_token, data.refresh_token);
+      login(data.access_token, data.refresh_token, data.user);
       setStatus("success");
       setTimeout(() => navigate("/", { replace: true }), 900);
     } catch (err) {

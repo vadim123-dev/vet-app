@@ -632,3 +632,420 @@ def get_pet_by_id(engine: Engine, pet_id_str: str) -> dict:
 
     if not row:
         return {}
+
+
+DEFAULT_WIDGET_ORDER = ["checkin", "hospitalized", "reminders", "whosin"]
+
+def get_dashboard_layout(engine: Engine, user_name: str) -> list[str]:
+    sql = text("""
+        SELECT udl.widget_order
+        FROM user_dashboard_layouts udl
+        JOIN users u ON u.id = udl.user_id
+        WHERE u.user_name = :user_name
+    """)
+    with engine.begin() as conn:
+        row = conn.execute(sql, {"user_name": user_name}).mappings().first()
+    if not row:
+        return DEFAULT_WIDGET_ORDER
+    import json
+    val = row["widget_order"]
+    return json.loads(val) if isinstance(val, str) else val
+
+
+def save_dashboard_layout(engine: Engine, user_name: str, widget_order: list) -> None:
+    import json
+    user_sql   = text("SELECT id FROM users WHERE user_name = :user_name")
+    upsert_sql = text("""
+        INSERT INTO user_dashboard_layouts (user_id, widget_order)
+        VALUES (:user_id, :widget_order)
+        ON DUPLICATE KEY UPDATE widget_order = :widget_order
+    """)
+    with engine.begin() as conn:
+        row = conn.execute(user_sql, {"user_name": user_name}).mappings().first()
+        if not row:
+            raise ValueError(f"User '{user_name}' not found")
+        conn.execute(upsert_sql, {
+            "user_id":      row["id"],
+            "widget_order": json.dumps(widget_order),
+        })
+
+
+def get_todays_shift_checkins(engine: Engine) -> list[dict]:
+    """All staff who have checked in today, with their check-out time if set."""
+    sql = text("""
+        SELECT
+            sc.id, sc.checked_in_at, sc.checked_out_at,
+            u.user_name, u.first_name, u.last_name,
+            GROUP_CONCAT(ur.code ORDER BY ur.code SEPARATOR ',') AS roles
+        FROM shift_checkins sc
+        JOIN users u ON u.id = sc.user_id
+        LEFT JOIN user_role_assignments ura ON ura.user_id = u.id
+        LEFT JOIN user_roles ur ON ur.id = ura.role_id
+        WHERE DATE(sc.checked_in_at) = CURDATE()
+        GROUP BY sc.id, sc.checked_in_at, sc.checked_out_at,
+                 u.user_name, u.first_name, u.last_name
+        ORDER BY sc.checked_in_at ASC
+    """)
+    with engine.begin() as conn:
+        rows = conn.execute(sql).mappings().all()
+    return [
+        {
+            "id":              bin_to_uuid(r["id"]),
+            "user_name":       r["user_name"],
+            "first_name":      r["first_name"],
+            "last_name":       r["last_name"],
+            "roles":           r["roles"].split(",") if r["roles"] else [],
+            "checked_in_at":   str(r["checked_in_at"]),
+            "checked_out_at":  str(r["checked_out_at"]) if r["checked_out_at"] else None,
+        }
+        for r in rows
+    ]
+
+
+def get_my_shift_status(engine: Engine, user_name: str) -> dict | None:
+    """Return the most recent open shift for this user today, or None."""
+    sql = text("""
+        SELECT sc.id, sc.checked_in_at, sc.checked_out_at
+        FROM shift_checkins sc
+        JOIN users u ON u.id = sc.user_id
+        WHERE u.user_name = :user_name
+          AND DATE(sc.checked_in_at) = CURDATE()
+          AND sc.checked_out_at IS NULL
+        ORDER BY sc.checked_in_at DESC
+        LIMIT 1
+    """)
+    with engine.begin() as conn:
+        row = conn.execute(sql, {"user_name": user_name}).mappings().first()
+    if not row:
+        return None
+    return {
+        "id":            bin_to_uuid(row["id"]),
+        "checked_in_at": str(row["checked_in_at"]),
+    }
+
+
+def shift_checkin(engine: Engine, user_name: str) -> dict:
+    """Check a user in to their shift. Returns the new checkin record."""
+    user_sql = text("SELECT id FROM users WHERE user_name = :user_name")
+    ins_sql  = text("""
+        INSERT INTO shift_checkins (id, user_id, checked_in_at)
+        VALUES (:id, :user_id, NOW())
+    """)
+    checkin_id = uuid.uuid4()
+    with engine.begin() as conn:
+        row = conn.execute(user_sql, {"user_name": user_name}).mappings().first()
+        if not row:
+            raise ValueError(f"User '{user_name}' not found")
+        conn.execute(ins_sql, {"id": uuid_to_bin(checkin_id), "user_id": row["id"]})
+    return {"id": str(checkin_id)}
+
+
+def shift_checkout(engine: Engine, user_name: str) -> bool:
+    """Check the user out of their open shift today. Returns True if updated."""
+    sql = text("""
+        UPDATE shift_checkins sc
+        JOIN users u ON u.id = sc.user_id
+        SET sc.checked_out_at = NOW()
+        WHERE u.user_name = :user_name
+          AND DATE(sc.checked_in_at) = CURDATE()
+          AND sc.checked_out_at IS NULL
+    """)
+    with engine.begin() as conn:
+        result = conn.execute(sql, {"user_name": user_name})
+    return result.rowcount > 0
+
+
+def get_active_reminders(engine: Engine) -> list[dict]:
+    """Active (not done) reminders ordered by priority then due_date."""
+    sql = text("""
+        SELECT
+            r.id, r.type, r.note, r.priority, r.due_date,
+            p.name        AS pet_name,
+            u.first_name  AS owner_first,
+            u.last_name   AS owner_last
+        FROM reminders r
+        LEFT JOIN pets p  ON p.id = r.pet_id
+        LEFT JOIN users u ON u.id = p.owner_user_id
+        WHERE r.is_done = FALSE
+        ORDER BY
+            FIELD(r.priority, 'overdue', 'today', 'soon'),
+            r.due_date ASC
+    """)
+    with engine.begin() as conn:
+        rows = conn.execute(sql).mappings().all()
+    return [
+        {
+            "id":       bin_to_uuid(r["id"]),
+            "type":     r["type"],
+            "note":     r["note"],
+            "priority": r["priority"],
+            "due_date": str(r["due_date"]) if r["due_date"] else None,
+            "pet_name": r["pet_name"],
+            "owner":    f"{r['owner_first']} {r['owner_last']}" if r["owner_first"] else None,
+        }
+        for r in rows
+    ]
+
+
+def get_current_hospitalizations(engine: Engine) -> list[dict]:
+    """All currently hospitalized patients (not yet discharged)."""
+    sql = text("""
+        SELECT
+            h.id, h.reason, h.status, h.admitted_at, h.notes,
+            p.name        AS pet_name,
+            pt.code       AS pet_type_code,
+            b.name        AS breed,
+            u_owner.first_name AS owner_first, u_owner.last_name AS owner_last,
+            cr.name       AS room_name, cr.room_type,
+            u_vet.first_name AS vet_first, u_vet.last_name AS vet_last
+        FROM hospitalizations h
+        JOIN  pets p            ON p.id  = h.pet_id
+        JOIN  pet_types pt      ON pt.id = p.pet_type_id
+        LEFT JOIN breeds b      ON b.id  = p.breed_id
+        JOIN  users u_owner     ON u_owner.id = p.owner_user_id
+        LEFT JOIN clinic_rooms cr ON cr.id = h.room_id
+        LEFT JOIN users u_vet   ON u_vet.id = h.caretaker_id
+        WHERE h.discharged_at IS NULL
+        ORDER BY h.admitted_at ASC
+    """)
+    with engine.begin() as conn:
+        rows = conn.execute(sql).mappings().all()
+    return [
+        {
+            "id":          bin_to_uuid(r["id"]),
+            "pet_name":    r["pet_name"],
+            "pet_type":    r["pet_type_code"],
+            "breed":       r["breed"],
+            "owner":       f"{r['owner_first']} {r['owner_last']}",
+            "reason":      r["reason"],
+            "status":      r["status"],
+            "room":        r["room_name"] or "—",
+            "caretaker":   f"Dr. {r['vet_first']} {r['vet_last']}" if r["vet_first"] else "—",
+            "admitted_at": str(r["admitted_at"]),
+            "notes":       r["notes"],
+        }
+        for r in rows
+    ]
+
+
+def get_user_roles(engine: Engine, user_name: str) -> list[str]:
+    """Return list of role codes for a user."""
+    sql = text("""
+        SELECT ur.code
+        FROM user_roles ur
+        JOIN user_role_assignments ura ON ura.role_id = ur.id
+        JOIN users u ON u.id = ura.user_id
+        WHERE u.user_name = :user_name
+    """)
+    with engine.begin() as conn:
+        rows = conn.execute(sql, {"user_name": user_name}).mappings().all()
+    return [r["code"] for r in rows]
+
+
+def get_all_users_with_roles(engine: Engine) -> list[dict]:
+    """All users with their roles — for admin user management."""
+    sql = text("""
+        SELECT
+            u.id, u.user_name, u.first_name, u.last_name,
+            u.gender, u.city, u.telephone, u.created_at,
+            GROUP_CONCAT(ur.code ORDER BY ur.code SEPARATOR ',') AS roles
+        FROM users u
+        LEFT JOIN user_role_assignments ura ON ura.user_id = u.id
+        LEFT JOIN user_roles ur ON ur.id = ura.role_id
+        GROUP BY u.id
+        ORDER BY u.created_at DESC
+    """)
+    with engine.begin() as conn:
+        rows = conn.execute(sql).mappings().all()
+    return [
+        {
+            "id":         bin_to_uuid(r["id"]),
+            "user_name":  r["user_name"],
+            "first_name": r["first_name"],
+            "last_name":  r["last_name"],
+            "gender":     r["gender"],
+            "city":       r["city"],
+            "telephone":  r["telephone"],
+            "created_at": str(r["created_at"]),
+            "roles":      r["roles"].split(",") if r["roles"] else [],
+        }
+        for r in rows
+    ]
+
+
+def add_user_with_role(engine: Engine, user_name: str, first_name: str, last_name: str,
+                       gender: int, city: str, telephone: str,
+                       password_hash: str, role_code: str = "customer") -> dict:
+    """Add a new user and assign a specific role."""
+    user_id = uuid.uuid4()
+    user_id_bin = uuid_to_bin(user_id)
+
+    insert_sql = text("""
+        INSERT INTO users (id, user_name, first_name, last_name, gender, city, telephone, password_hash)
+        VALUES (:id, :user_name, :first_name, :last_name, :gender, :city, :telephone, :password_hash)
+    """)
+    role_sql  = text("SELECT id FROM user_roles WHERE code = :code LIMIT 1")
+    assign_sql = text("INSERT INTO user_role_assignments (user_id, role_id) VALUES (:user_id, :role_id)")
+
+    try:
+        with engine.begin() as conn:
+            conn.execute(insert_sql, {
+                "id": user_id_bin, "user_name": user_name, "first_name": first_name,
+                "last_name": last_name, "gender": gender, "city": city,
+                "telephone": telephone, "password_hash": password_hash,
+            })
+            role_row = conn.execute(role_sql, {"code": role_code}).mappings().first()
+            if role_row:
+                conn.execute(assign_sql, {"user_id": user_id_bin, "role_id": role_row["id"]})
+        return {"id": str(user_id), "user_name": user_name,
+                "first_name": first_name, "last_name": last_name}
+    except Exception as e:
+        raise Exception(f"Failed to create user: {str(e)}")
+
+
+def update_user_role(engine: Engine, user_name: str, new_role_code: str) -> None:
+    """Replace all roles for a user with a single new role."""
+    get_user_sql  = text("SELECT id FROM users WHERE user_name = :user_name")
+    get_role_sql  = text("SELECT id FROM user_roles WHERE code = :code LIMIT 1")
+    del_roles_sql = text("DELETE FROM user_role_assignments WHERE user_id = :user_id")
+    assign_sql    = text("INSERT INTO user_role_assignments (user_id, role_id) VALUES (:user_id, :role_id)")
+
+    with engine.begin() as conn:
+        user_row = conn.execute(get_user_sql, {"user_name": user_name}).mappings().first()
+        if not user_row:
+            raise ValueError(f"User '{user_name}' not found")
+        role_row = conn.execute(get_role_sql, {"code": new_role_code}).mappings().first()
+        if not role_row:
+            raise ValueError(f"Role '{new_role_code}' not found")
+        conn.execute(del_roles_sql, {"user_id": user_row["id"]})
+        conn.execute(assign_sql, {"user_id": user_row["id"], "role_id": role_row["id"]})
+
+
+def create_visit(engine: Engine, appointment_id_str: str, pet_id_str: str,
+                 vet_user_id_str: str | None, chief_complaint: str | None,
+                 exam_notes: str | None, assessment: str | None, plan: str | None) -> dict:
+    """Create a visit record linked to an appointment."""
+    visit_id     = uuid.uuid4()
+    visit_id_bin = uuid_to_bin(visit_id)
+    appt_id_bin  = uuid_to_bin(uuid.UUID(appointment_id_str))
+    pet_id_bin   = uuid_to_bin(uuid.UUID(pet_id_str))
+    vet_id_bin   = uuid_to_bin(uuid.UUID(vet_user_id_str)) if vet_user_id_str else None
+
+    sql = text("""
+        INSERT INTO visits (id, appointment_id, pet_id, vet_user_id,
+                            chief_complaint, exam_notes, assessment, plan)
+        VALUES (:id, :appointment_id, :pet_id, :vet_user_id,
+                :chief_complaint, :exam_notes, :assessment, :plan)
+    """)
+    with engine.begin() as conn:
+        conn.execute(sql, {
+            "id": visit_id_bin, "appointment_id": appt_id_bin, "pet_id": pet_id_bin,
+            "vet_user_id": vet_id_bin, "chief_complaint": chief_complaint,
+            "exam_notes": exam_notes, "assessment": assessment, "plan": plan,
+        })
+    return {"id": str(visit_id)}
+
+
+def _build_visit(row, prescs) -> dict:
+    return {
+        "id":               bin_to_uuid(row["id"]),
+        "appointment_id":   bin_to_uuid(row["appointment_id"]),
+        "chief_complaint":  row["chief_complaint"],
+        "exam_notes":       row["exam_notes"],
+        "assessment":       row["assessment"],
+        "plan":             row["plan"],
+        "created_at":       str(row["created_at"]),
+        "updated_at":       str(row["updated_at"]),
+        "vet_name":         f"Dr. {row['vet_first']} {row['vet_last']}" if row["vet_first"] else None,
+        "pet_name":         row["pet_name"],
+        "prescriptions": [
+            {
+                "id":            p["id"],
+                "drug_name":     p["drug_name"],
+                "dosage":        p["dosage"],
+                "frequency":     p["frequency"],
+                "duration_days": p["duration_days"],
+                "notes":         p["notes"],
+            }
+            for p in prescs
+        ],
+    }
+
+
+def get_visit(engine: Engine, visit_id_str: str) -> dict:
+    """Full visit with prescriptions."""
+    visit_id_bin = uuid_to_bin(uuid.UUID(visit_id_str))
+
+    visit_sql = text("""
+        SELECT v.id, v.appointment_id, v.chief_complaint, v.exam_notes,
+               v.assessment, v.plan, v.created_at, v.updated_at,
+               u.first_name AS vet_first, u.last_name AS vet_last,
+               p.name AS pet_name
+        FROM   visits v
+        LEFT JOIN users u ON u.id = v.vet_user_id
+        JOIN   pets p     ON p.id = v.pet_id
+        WHERE  v.id = :visit_id
+    """)
+    presc_sql = text("""
+        SELECT id, drug_name, dosage, frequency, duration_days, notes
+        FROM   prescriptions
+        WHERE  visit_id = :visit_id
+        ORDER  BY id ASC
+    """)
+    with engine.begin() as conn:
+        row = conn.execute(visit_sql, {"visit_id": visit_id_bin}).mappings().first()
+        if not row:
+            return {}
+        prescs = conn.execute(presc_sql, {"visit_id": visit_id_bin}).mappings().all()
+    return _build_visit(row, prescs)
+
+
+def get_visit_by_appointment(engine: Engine, appointment_id_str: str) -> dict:
+    """Get visit (with prescriptions) linked to a given appointment, or {}."""
+    appt_id_bin = uuid_to_bin(uuid.UUID(appointment_id_str))
+
+    sql = text("SELECT id FROM visits WHERE appointment_id = :appt_id LIMIT 1")
+    with engine.begin() as conn:
+        row = conn.execute(sql, {"appt_id": appt_id_bin}).mappings().first()
+    if not row:
+        return {}
+    return get_visit(engine, bin_to_uuid(row["id"]))
+
+
+def update_visit(engine: Engine, visit_id_str: str, updates: dict) -> None:
+    visit_id_bin = uuid_to_bin(uuid.UUID(visit_id_str))
+    allowed = {"chief_complaint", "exam_notes", "assessment", "plan"}
+    set_parts, params = [], {"visit_id": visit_id_bin}
+    for field, value in updates.items():
+        if field not in allowed:
+            continue
+        params[field] = value
+        set_parts.append(f"{field} = :{field}")
+    if not set_parts:
+        return
+    sql = text(f"UPDATE visits SET {', '.join(set_parts)} WHERE id = :visit_id")
+    with engine.begin() as conn:
+        conn.execute(sql, params)
+
+
+def set_prescriptions(engine: Engine, visit_id_str: str, prescriptions: list) -> None:
+    """Replace all prescriptions for a visit."""
+    visit_id_bin = uuid_to_bin(uuid.UUID(visit_id_str))
+    del_sql = text("DELETE FROM prescriptions WHERE visit_id = :visit_id")
+    ins_sql = text("""
+        INSERT INTO prescriptions (visit_id, drug_name, dosage, frequency, duration_days, notes)
+        VALUES (:visit_id, :drug_name, :dosage, :frequency, :duration_days, :notes)
+    """)
+    with engine.begin() as conn:
+        conn.execute(del_sql, {"visit_id": visit_id_bin})
+        for p in prescriptions:
+            if not p.get("drug_name"):
+                continue
+            conn.execute(ins_sql, {
+                "visit_id":     visit_id_bin,
+                "drug_name":    p.get("drug_name", ""),
+                "dosage":       p.get("dosage"),
+                "frequency":    p.get("frequency"),
+                "duration_days": p.get("duration_days"),
+                "notes":        p.get("notes"),
+            })

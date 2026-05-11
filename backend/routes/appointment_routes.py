@@ -4,7 +4,8 @@ from flask_jwt_extended import jwt_required
 from backend.db.repo import (
     get_appointments_for_day, get_clinic_resources,
     create_appointment, update_appointment,
-    check_appointment_conflicts,
+    check_appointment_conflicts, get_current_hospitalizations,
+    get_active_reminders,
 )
 
 appointments_bp = Blueprint("appointments", __name__, url_prefix="/appointments")
@@ -112,3 +113,15 @@ def patch_appointment(appt_id):
         return jsonify(error=str(e)), 404
     except Exception as e:
         return jsonify(error=f"Could not update appointment: {e}"), 500
+
+
+@appointments_bp.get("/hospitalizations")
+@jwt_required()
+def current_hospitalizations():
+    return jsonify(get_current_hospitalizations(current_app.db_engine)), 200
+
+
+@appointments_bp.get("/reminders")
+@jwt_required()
+def active_reminders():
+    return jsonify(get_active_reminders(current_app.db_engine)), 200

@@ -208,7 +208,7 @@ function PetSelect({ value, onChange, pets, loading }) {
 
 // ─── Main modal ───────────────────────────────────────────────────────────────
 
-export default function NewAppointmentModal({ open, prefill, resources, onClose, onCreated }) {
+export default function NewAppointmentModal({ open, prefill, resources, patients = [], onClose, onCreated }) {
   const [pets,        setPets]       = useState([]);
   const [petsLoading, setPetsLoading]= useState(false);
 
@@ -269,15 +269,16 @@ export default function NewAppointmentModal({ open, prefill, resources, onClose,
     setRoomId(derivedRoom ? String(derivedRoom.id) : "");
   }, [derivedRoom]);
 
-  // Load pets once
+  // Use patients passed from parent, fall back to fetching if not provided
   useEffect(() => {
+    if (patients.length > 0) { setPets(patients); return; }
     if (!open || pets.length > 0) return;
     setPetsLoading(true);
     apiFetch("/pets/all")
       .then(d => setPets(Array.isArray(d) ? d : []))
       .catch(() => {})
       .finally(() => setPetsLoading(false));
-  }, [open]);
+  }, [open, patients]);
 
   // Pre-fill from slot click whenever prefill changes
   useEffect(() => {
