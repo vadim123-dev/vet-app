@@ -50,7 +50,7 @@ jobs:
         run: |
           docker run -d --name vet-smoke \
             --network=host \
-            -e FLASK_APP=app \
+            -e FLASK_APP=backend.app \
             -e DB_HOST=127.0.0.1 \
             -e DB_PORT=3306 \
             -e DB_USER=root \
@@ -205,7 +205,7 @@ jobs:
         run: |
           docker run -d --name vet-e2e \
             --network=host \
-            -e FLASK_APP=app \
+            -e FLASK_APP=backend.app \
             -e DB_HOST=127.0.0.1 \
             -e DB_PORT=3306 \
             -e DB_USER=root \
