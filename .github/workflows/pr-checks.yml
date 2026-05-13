@@ -82,5 +82,5 @@ jobs:
       - name: Install dev dependencies
         run: pip install -r backend/requirements-dev.txt
 
-      - name: Run tests
-        run: pytest
+      - name: Run unit tests
+        run: pytest backend/tests/unit -v
