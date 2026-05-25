@@ -1,0 +1,79 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: teyavet-ingress
+  namespace: teyavet
+  annotations:
+    kubernetes.io/ingress.class: alb
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip           # routes directly to pod IPs (AWS VPC CNI)
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}]'
+    alb.ingress.kubernetes.io/security-groups: "teyavet-alb-sg"
+    alb.ingress.kubernetes.io/healthcheck-path: /health
+    alb.ingress.kubernetes.io/healthcheck-interval-seconds: "30"
+    alb.ingress.kubernetes.io/healthcheck-timeout-seconds: "5"
+    alb.ingress.kubernetes.io/healthy-threshold-count: "2"
+    alb.ingress.kubernetes.io/unhealthy-threshold-count: "3"
+    alb.ingress.kubernetes.io/deregistration-delay.timeout-seconds: "30"
+spec:
+  rules:
+    - http:
+        paths:
+          # API routes — must come before the /* catch-all
+          - path: /users
+            pathType: Prefix
+            backend:
+              service:
+                name: backend-service
+                port:
+                  number: 5000
+          - path: /pets
+            pathType: Prefix
+            backend:
+              service:
+                name: backend-service
+                port:
+                  number: 5000
+          - path: /appointments
+            pathType: Prefix
+            backend:
+              service:
+                name: backend-service
+                port:
+                  number: 5000
+          - path: /visits
+            pathType: Prefix
+            backend:
+              service:
+                name: backend-service
+                port:
+                  number: 5000
+          - path: /shifts
+            pathType: Prefix
+            backend:
+              service:
+                name: backend-service
+                port:
+                  number: 5000
+          - path: /dashboard
+            pathType: Prefix
+            backend:
+              service:
+                name: backend-service
+                port:
+                  number: 5000
+          - path: /health
+            pathType: Exact
+            backend:
+              service:
+                name: backend-service
+                port:
+                  number: 5000
+          # Catch-all — serve the React SPA
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: frontend-service
+                port:
+                  number: 80

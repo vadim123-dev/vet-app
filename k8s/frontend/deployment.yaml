@@ -1,0 +1,57 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend
+  namespace: teyavet
+  labels:
+    app: frontend
+  annotations:
+    keel.sh/policy: force      # always update when :latest digest changes in ECR
+    keel.sh/trigger: poll      # poll ECR rather than wait for a webhook
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: frontend
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0        # zero-downtime: always keep 2 pods up during rollout
+  template:
+    metadata:
+      labels:
+        app: frontend
+    spec:
+      # No imagePullSecrets needed — EKS nodes have AmazonEC2ContainerRegistryReadOnly IAM role
+      containers:
+        - name: frontend
+          # AWS_ACCOUNT_ID is substituted by deploy-eks.yml at apply time
+          image: AWS_ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com/teyavet/frontend:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 80
+              protocol: TCP
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "64Mi"
+            limits:
+              cpu: "200m"
+              memory: "128Mi"
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 10
+            periodSeconds: 15
+            failureThreshold: 3
+            timeoutSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            failureThreshold: 3
+            timeoutSeconds: 5

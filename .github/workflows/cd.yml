@@ -85,7 +85,7 @@ jobs:
           file: ./frontend/Dockerfile.prod
           push: false
           load: true
-          build-args: VITE_API_URL=${{ secrets.VITE_API_URL }}
+          build-args: VITE_API_URL=
           tags: vet-frontend:${{ github.sha }}
 
       - name: Start frontend container
@@ -110,79 +110,72 @@ jobs:
           docker rm -f vet-mysql || true
           docker rm -f vet-frontend-smoke || true
 
-  # ── Job 2: Push all 3 images to Docker Hub (amd64 + arm64) ──────────────────
-  push-to-dockerhub:
-    name: Push to Docker Hub
+  # ── Job 2: Push backend + frontend images to ECR ────────────────────────────
+  push-to-ecr:
+    name: Push to ECR
     needs: build-and-validate
     runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Log in to Docker Hub
-        uses: docker/login-action@v3
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
         with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
 
-      - name: Push backend image
+      - name: Log in to ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Push backend to ECR
         uses: docker/build-push-action@v5
         with:
           context: ./backend
-          platforms: linux/amd64,linux/arm64
           push: true
           tags: |
-            ${{ secrets.DOCKERHUB_USERNAME }}/vet-backend:${{ github.sha }}
-            ${{ secrets.DOCKERHUB_USERNAME }}/vet-backend:latest
+            ${{ secrets.ECR_BACKEND_URL }}:${{ github.sha }}
+            ${{ secrets.ECR_BACKEND_URL }}:latest
 
-      - name: Push frontend image
+      - name: Push frontend to ECR
         uses: docker/build-push-action@v5
         with:
           context: ./frontend
           file: ./frontend/Dockerfile.prod
-          platforms: linux/amd64,linux/arm64
           push: true
-          build-args: VITE_API_URL=${{ secrets.VITE_API_URL }}
+          build-args: VITE_API_URL=
           tags: |
-            ${{ secrets.DOCKERHUB_USERNAME }}/vet-frontend:${{ github.sha }}
-            ${{ secrets.DOCKERHUB_USERNAME }}/vet-frontend:latest
+            ${{ secrets.ECR_FRONTEND_URL }}:${{ github.sha }}
+            ${{ secrets.ECR_FRONTEND_URL }}:latest
 
-      - name: Push DB image
-        uses: docker/build-push-action@v5
-        with:
-          context: ./db
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: |
-            ${{ secrets.DOCKERHUB_USERNAME }}/vet-db:${{ github.sha }}
-            ${{ secrets.DOCKERHUB_USERNAME }}/vet-db:latest
-
-  # ── Job 3: Pull all images from Docker Hub, run E2E tests ───────────────────
+  # ── Job 3: Pull images from ECR, run E2E tests ──────────────────────────────
   e2e-tests:
     name: E2E Tests
-    needs: push-to-dockerhub
+    needs: push-to-ecr
     runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Log in to Docker Hub
-        uses: docker/login-action@v3
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
         with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
 
-      - name: Pull images from Docker Hub
-        run: |
-          docker pull ${{ secrets.DOCKERHUB_USERNAME }}/vet-db:${{ github.sha }}
-          docker pull ${{ secrets.DOCKERHUB_USERNAME }}/vet-backend:${{ github.sha }}
-          docker pull ${{ secrets.DOCKERHUB_USERNAME }}/vet-frontend:${{ github.sha }}
+      - name: Log in to ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Pull backend image from ECR
+        run: docker pull ${{ secrets.ECR_BACKEND_URL }}:${{ github.sha }}
+
+      - name: Build DB image locally
+        run: docker build -t vet-db ./db
 
       - name: Start DB container
         run: |
@@ -190,7 +183,7 @@ jobs:
             --network=host \
             -e MYSQL_ROOT_PASSWORD=pandaTeya \
             -e MYSQL_DATABASE=vet \
-            ${{ secrets.DOCKERHUB_USERNAME }}/vet-db:${{ github.sha }}
+            vet-db
 
       - name: Wait for MySQL to be ready
         run: |
@@ -213,7 +206,7 @@ jobs:
             -e DB_NAME=vet \
             -e JWT_SECRET_KEY=ci-test-secret \
             -e CORS_ORIGINS=http://localhost:5173 \
-            ${{ secrets.DOCKERHUB_USERNAME }}/vet-backend:${{ github.sha }}
+            ${{ secrets.ECR_BACKEND_URL }}:${{ github.sha }}
 
       - name: Wait for backend
         run: |
@@ -238,11 +231,12 @@ jobs:
       - name: Run E2E tests
         run: pytest backend/tests/e2e -v
 
-      - name: Start frontend container
+      - name: Pull and start frontend container
         run: |
+          docker pull ${{ secrets.ECR_FRONTEND_URL }}:${{ github.sha }}
           docker run -d --name vet-frontend-e2e \
             --network=host \
-            ${{ secrets.DOCKERHUB_USERNAME }}/vet-frontend:${{ github.sha }}
+            ${{ secrets.ECR_FRONTEND_URL }}:${{ github.sha }}
 
       - name: Smoke test — frontend serves HTML
         run: |
