@@ -38,17 +38,28 @@ jobs:
             --from-literal=JWT_SECRET_KEY="${{ secrets.JWT_SECRET_KEY }}" \
             --dry-run=client -o yaml | kubectl apply -f -
 
-      - name: Apply / update ConfigMap with live values
+      - name: Apply / update ConfigMap
+        env:
+          RDS_HOST: ${{ secrets.RDS_HOST }}
+          ALB_DNS: ${{ secrets.ALB_DNS }}
+        run: envsubst < k8s/backend/configmap.yaml | kubectl apply -f -
+
+      - name: Create ConfigMap with SQL migration files
         run: |
-          kubectl create configmap backend-config \
+          kubectl create configmap db-sql \
             --namespace teyavet \
-            --from-literal=FLASK_APP=backend.app \
-            --from-literal=DB_HOST=${{ secrets.RDS_HOST }} \
-            --from-literal=DB_PORT=3306 \
-            --from-literal=DB_USER=vetadmin \
-            --from-literal=DB_NAME=vet \
-            --from-literal=CORS_ORIGINS=http://${{ secrets.ALB_DNS }} \
+            --from-file=schema.sql=db/init/schema.sql \
+            --from-file=seed_data.sql=db/init/seed_data.sql \
             --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Run database migration
+        run: |
+          # Delete any previous migration job so we can re-run cleanly
+          kubectl delete job db-migrate -n teyavet --ignore-not-found
+          kubectl apply -f k8s/backend/migration-job.yaml
+          kubectl wait --for=condition=complete job/db-migrate \
+            -n teyavet --timeout=120s
+          kubectl logs -n teyavet -l job-name=db-migrate
 
       - name: Apply Services and Ingress
         run: |

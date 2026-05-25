@@ -8,5 +8,7 @@ data:
   DB_PORT: "3306"
   DB_USER: "vetadmin"
   DB_NAME: "vet"
-  # DB_HOST and CORS_ORIGINS are injected at deploy time by deploy-eks.yml
-  # via: kubectl create configmap backend-config --from-literal=DB_HOST=... --dry-run=client -o yaml | kubectl apply -f -
+  # Applied via: envsubst < k8s/backend/configmap.yaml | kubectl apply -f -
+  # RDS_HOST and ALB_DNS are substituted from GitHub Secrets at deploy time
+  DB_HOST: "${RDS_HOST}"
+  CORS_ORIGINS: "http://${ALB_DNS}"
