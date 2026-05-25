@@ -1,0 +1,88 @@
+name: Deploy to EKS
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: 'Image tag to deploy (SHA or "latest")'
+        required: false
+        default: 'latest'
+
+jobs:
+  deploy:
+    name: Deploy to EKS
+    runs-on: ubuntu-latest
+    environment: production   # requires approval from configured reviewers in GitHub Settings
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - name: Update kubeconfig
+        run: aws eks update-kubeconfig --name teyavet-prod --region us-east-1
+
+      - name: Apply namespace
+        run: kubectl apply -f k8s/namespace.yaml
+
+      - name: Create / update K8s Secret
+        run: |
+          kubectl create secret generic backend-secrets \
+            --namespace teyavet \
+            --from-literal=DB_PASSWORD="${{ secrets.DB_PASSWORD }}" \
+            --from-literal=JWT_SECRET_KEY="${{ secrets.JWT_SECRET_KEY }}" \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Apply / update ConfigMap with live values
+        run: |
+          kubectl create configmap backend-config \
+            --namespace teyavet \
+            --from-literal=FLASK_APP=backend.app \
+            --from-literal=DB_HOST=${{ secrets.RDS_HOST }} \
+            --from-literal=DB_PORT=3306 \
+            --from-literal=DB_USER=vetadmin \
+            --from-literal=DB_NAME=vet \
+            --from-literal=CORS_ORIGINS=http://${{ secrets.ALB_DNS }} \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Apply Services and Ingress
+        run: |
+          kubectl apply -f k8s/backend/service.yaml
+          kubectl apply -f k8s/frontend/service.yaml
+          kubectl apply -f k8s/ingress.yaml
+
+      - name: Deploy backend
+        run: |
+          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+          sed "s|AWS_ACCOUNT_ID|${ACCOUNT_ID}|g" k8s/backend/deployment.yaml \
+            | sed "s|:latest|:${{ github.event.inputs.image_tag }}|g" \
+            | kubectl apply -f -
+
+      - name: Deploy frontend
+        run: |
+          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+          sed "s|AWS_ACCOUNT_ID|${ACCOUNT_ID}|g" k8s/frontend/deployment.yaml \
+            | sed "s|:latest|:${{ github.event.inputs.image_tag }}|g" \
+            | kubectl apply -f -
+
+      - name: Wait for rollout
+        run: |
+          kubectl rollout status deployment/backend -n teyavet --timeout=120s
+          kubectl rollout status deployment/frontend -n teyavet --timeout=120s
+
+      - name: Print app URL
+        run: |
+          ALB=$(kubectl get ingress teyavet-ingress -n teyavet \
+            -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || echo "pending — check back in 2 min")
+          echo "========================================"
+          echo "  App URL : http://${ALB}"
+          echo "  Health  : http://${ALB}/health"
+          echo "========================================"
+          echo ""
+          echo "If ALB_DNS secret is not yet set, copy the URL above and add it as a"
+          echo "GitHub secret named ALB_DNS for CORS_ORIGINS in future deployments."

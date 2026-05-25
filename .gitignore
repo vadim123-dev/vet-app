@@ -21,3 +21,6 @@ dist/
 # OS
 .DS_Store
 Thumbs.db
+
+# Kubernetes — never commit real secrets
+k8s/backend/secret.yaml

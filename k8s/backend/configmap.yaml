@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: backend-config
+  namespace: teyavet
+data:
+  FLASK_APP: "backend.app"
+  DB_PORT: "3306"
+  DB_USER: "vetadmin"
+  DB_NAME: "vet"
+  # DB_HOST and CORS_ORIGINS are injected at deploy time by deploy-eks.yml
+  # via: kubectl create configmap backend-config --from-literal=DB_HOST=... --dry-run=client -o yaml | kubectl apply -f -
