@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from "react";
 import { TeyaLogo } from "./TeyaLogo";
 
 const ALL_TABS = [
-  { id: "dashboard",    label: "Dashboard",        icon: "home",     roles: ["admin", "vet", "coordinator"] },
+  { id: "dashboard",    label: "Bla Bla",          icon: "home",     roles: ["admin", "vet", "coordinator"] },
   { id: "owners",       label: "Pet Owners",        icon: "user",     roles: ["admin", "vet", "coordinator"] },
   { id: "patients",     label: "Patients",          icon: "paw",      roles: ["admin", "vet", "coordinator"] },
   { id: "appointments", label: "Appointments",      icon: "calendar", roles: ["admin", "coordinator"] },
