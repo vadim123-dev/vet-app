@@ -33,6 +33,19 @@ jobs:
         working-directory: infra/bootstrap
         run: terraform init
 
+      - name: Bootstrap — import existing resources
+        working-directory: infra/bootstrap
+        run: |
+          # The S3 bucket and DynamoDB table may already exist from a previous run.
+          # Import them into state so apply sees no diff instead of failing with
+          # BucketAlreadyExists / ResourceInUseException.
+          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+          terraform import aws_s3_bucket.tf_state "teyavet-terraform-state-${ACCOUNT_ID}" 2>/dev/null || true
+          terraform import aws_dynamodb_table.tf_lock "teyavet-terraform-locks" 2>/dev/null || true
+          terraform import aws_s3_bucket_versioning.tf_state "teyavet-terraform-state-${ACCOUNT_ID}" 2>/dev/null || true
+          terraform import aws_s3_bucket_server_side_encryption_configuration.tf_state "teyavet-terraform-state-${ACCOUNT_ID}" 2>/dev/null || true
+          terraform import aws_s3_bucket_public_access_block.tf_state "teyavet-terraform-state-${ACCOUNT_ID}" 2>/dev/null || true
+
       - name: Bootstrap — apply
         working-directory: infra/bootstrap
         run: terraform apply -auto-approve
