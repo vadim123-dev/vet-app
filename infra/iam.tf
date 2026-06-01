@@ -66,3 +66,63 @@ resource "aws_iam_openid_connect_provider" "eks" {
   thumbprint_list = [data.tls_certificate.eks.certificates[0].sha1_fingerprint]
   url             = aws_eks_cluster.main.identity[0].oidc[0].issuer
 }
+
+# ─── AWS Load Balancer Controller IAM ────────────────────────────────────────
+# The LBC runs as a pod inside kube-system and needs AWS permissions to create
+# and manage ALBs, target groups, listeners, and security groups on your behalf.
+#
+# HOW IT WORKS (IRSA — IAM Roles for Service Accounts):
+#   1. Terraform creates an IAM role with a trust policy that says:
+#      "only the pod running as K8s ServiceAccount
+#       system:serviceaccount:kube-system:aws-load-balancer-controller
+#       in THIS cluster's OIDC provider may assume this role"
+#   2. The Helm chart (installed in deploy-eks.yml) creates that ServiceAccount
+#      and annotates it with the role ARN.
+#   3. When the LBC pod starts, the AWS SDK inside it exchanges the pod's
+#      projected ServiceAccount token for temporary AWS credentials via STS.
+#   4. No IAM user keys required — credentials are scoped to this pod only.
+#
+# The policy JSON is stored in infra/lbc-iam-policy.json (official AWS LBC
+# policy, pinned to v2.13 which covers LBC v3.x Helm releases).
+
+locals {
+  oidc_issuer = aws_eks_cluster.main.identity[0].oidc[0].issuer
+  oidc_host   = replace(local.oidc_issuer, "https://", "")
+}
+
+resource "aws_iam_policy" "lbc" {
+  name        = "${var.project}-lbc-policy"
+  description = "IAM policy for the AWS Load Balancer Controller"
+  policy      = file("${path.module}/lbc-iam-policy.json")
+}
+
+resource "aws_iam_role" "lbc" {
+  name = "${var.project}-lbc-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Principal = {
+        Federated = aws_iam_openid_connect_provider.eks.arn
+      }
+      Action = "sts:AssumeRoleWithWebIdentity"
+      Condition = {
+        StringEquals = {
+          "${local.oidc_host}:aud" = "sts.amazonaws.com"
+          "${local.oidc_host}:sub" = "system:serviceaccount:kube-system:aws-load-balancer-controller"
+        }
+      }
+    }]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "lbc" {
+  role       = aws_iam_role.lbc.name
+  policy_arn = aws_iam_policy.lbc.arn
+}
+
+output "lbc_role_arn" {
+  description = "IAM role ARN for the AWS Load Balancer Controller (used by deploy-eks.yml)"
+  value       = aws_iam_role.lbc.arn
+}

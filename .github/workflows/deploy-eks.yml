@@ -27,8 +27,33 @@ jobs:
       - name: Update kubeconfig
         run: aws eks update-kubeconfig --name teyavet-prod --region us-east-1
 
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+
       - name: Apply namespace
         run: kubectl apply -f k8s/namespace.yaml
+
+      - name: Install / upgrade AWS Load Balancer Controller
+        run: |
+          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+          VPC_ID=$(aws eks describe-cluster --name teyavet-prod \
+            --query 'cluster.resourcesVpcConfig.vpcId' --output text)
+
+          helm repo add eks https://aws.github.io/eks-charts
+          helm repo update eks
+
+          # --install makes this idempotent (install on first run, upgrade on subsequent)
+          # --wait blocks until the LBC pods are Running and its webhook is ready,
+          # so the Ingress resource applied later is reconciled immediately.
+          helm upgrade --install aws-load-balancer-controller eks/aws-load-balancer-controller \
+            -n kube-system \
+            --set clusterName=teyavet-prod \
+            --set serviceAccount.create=true \
+            --set serviceAccount.name=aws-load-balancer-controller \
+            --set "serviceAccount.annotations.eks\\.amazonaws\\.com/role-arn=arn:aws:iam::${ACCOUNT_ID}:role/teyavet-lbc-role" \
+            --set region=us-east-1 \
+            --set vpcId="${VPC_ID}" \
+            --wait --timeout 3m
 
       - name: Create / update K8s Secret
         run: |
