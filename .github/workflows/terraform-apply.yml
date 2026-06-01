@@ -1,0 +1,71 @@
+name: Terraform — Apply Infrastructure
+
+on:
+  workflow_dispatch:
+
+jobs:
+  terraform:
+    name: Bootstrap + Apply
+    runs-on: ubuntu-latest
+    environment: production   # requires manual approval in GitHub Settings
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "~1.6"
+
+      # ── Phase 1: Bootstrap ─────────────────────────────────────────────────
+      # Creates the S3 bucket + DynamoDB table used as the Terraform backend.
+      # Safe to re-run: if the bucket already exists Terraform will just confirm
+      # no changes are needed.
+
+      - name: Bootstrap — init
+        working-directory: infra/bootstrap
+        run: terraform init
+
+      - name: Bootstrap — apply
+        working-directory: infra/bootstrap
+        run: terraform apply -auto-approve
+
+      # ── Phase 2: Main infrastructure ───────────────────────────────────────
+      # Provisions VPC, EKS, RDS, ECR, IAM roles, and security groups.
+      # Takes ~15 minutes on a fresh account (EKS cluster is slow to create).
+
+      - name: Infra — init
+        working-directory: infra
+        run: terraform init
+
+      - name: Infra — apply
+        working-directory: infra
+        run: terraform apply -auto-approve -var="db_password=${{ secrets.DB_PASSWORD }}"
+
+      # ── Print outputs + update instructions ────────────────────────────────
+
+      - name: Print outputs and next steps
+        working-directory: infra
+        run: |
+          echo "## Terraform outputs" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          terraform output >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## GitHub Secrets to update" >> $GITHUB_STEP_SUMMARY
+          echo "Update these 4 secrets before running the Deploy to EKS workflow:" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Secret | New value |" >> $GITHUB_STEP_SUMMARY
+          echo "|--------|-----------|" >> $GITHUB_STEP_SUMMARY
+          echo "| \`RDS_HOST\` | \`$(terraform output -raw rds_host)\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| \`ECR_BACKEND_URL\` | \`$(terraform output -raw ecr_backend_url)\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| \`ECR_FRONTEND_URL\` | \`$(terraform output -raw ecr_frontend_url)\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| \`ALB_DNS\` | *(get from Deploy to EKS workflow after first deploy)* |" >> $GITHUB_STEP_SUMMARY
