@@ -41,7 +41,7 @@ resource "aws_security_group" "alb" {
 
 resource "aws_security_group" "eks_nodes" {
   name        = "${var.project}-eks-nodes-sg"
-  description = "EKS control-plane ↔ node communication"
+  description = "EKS control-plane and node communication"
   vpc_id      = aws_vpc.main.id
 
   ingress {
