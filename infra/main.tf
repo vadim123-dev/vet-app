@@ -16,7 +16,7 @@ terraform {
     bucket         = "teyavet-terraform-state-257014219799"
     key            = "teyavet/terraform.tfstate"
     region         = "us-east-1"
-    use_lockfile   = true
+    dynamodb_table = "teyavet-terraform-locks"
     encrypt        = true
   }
 }
