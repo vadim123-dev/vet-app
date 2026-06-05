@@ -5,9 +5,9 @@ on:
     branches: [master]
 
 jobs:
-  # ── Job 1: Build all images locally, run smoke tests ────────────────────────
-  build-and-validate:
-    name: Build & Smoke Test
+  # ── Job 1: Build all images, run full test suite ─────────────────────────────
+  build-and-test:
+    name: Build & Test
     runs-on: ubuntu-latest
 
     steps:
@@ -48,7 +48,7 @@ jobs:
 
       - name: Start backend container
         run: |
-          docker run -d --name vet-smoke \
+          docker run -d --name vet-backend \
             --network=host \
             -e FLASK_APP=backend.app \
             -e DB_HOST=127.0.0.1 \
@@ -66,17 +66,22 @@ jobs:
             curl -sf http://localhost:5000/health && exit 0
             sleep 2
           done
-          docker logs vet-smoke
+          docker logs vet-backend
           exit 1
 
-      - name: Smoke test — health endpoint
-        run: curl -sf http://localhost:5000/health
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
 
-      - name: Smoke test — login endpoint responds
-        run: |
-          curl -sf -X POST http://localhost:5000/users/authenticate \
-            -H "Content-Type: application/json" \
-            -d '{"user_name":"Admin","password":"Admin"}' | grep access_token
+      - name: Install dev dependencies
+        run: pip install -r backend/requirements-dev.txt
+
+      - name: Run unit tests
+        run: pytest backend/tests/unit -v
+
+      - name: Run E2E tests
+        run: pytest backend/tests/e2e -v
 
       - name: Build frontend image
         uses: docker/build-push-action@v5
@@ -90,7 +95,7 @@ jobs:
 
       - name: Start frontend container
         run: |
-          docker run -d --name vet-frontend-smoke \
+          docker run -d --name vet-frontend \
             --network=host \
             vet-frontend:${{ github.sha }}
 
@@ -100,20 +105,20 @@ jobs:
             curl -sf http://localhost:80 | grep -i "html" && exit 0
             sleep 2
           done
-          docker logs vet-frontend-smoke
+          docker logs vet-frontend
           exit 1
 
       - name: Stop and remove containers
         if: always()
         run: |
-          docker rm -f vet-smoke || true
+          docker rm -f vet-backend || true
           docker rm -f vet-mysql || true
-          docker rm -f vet-frontend-smoke || true
+          docker rm -f vet-frontend || true
 
   # ── Job 2: Push backend + frontend images to ECR ────────────────────────────
   push-to-ecr:
     name: Push to ECR
-    needs: build-and-validate
+    needs: build-and-test
     runs-on: ubuntu-latest
 
     steps:
@@ -151,105 +156,3 @@ jobs:
           tags: |
             ${{ secrets.ECR_FRONTEND_URL }}:${{ github.sha }}
             ${{ secrets.ECR_FRONTEND_URL }}:latest
-
-  # ── Job 3: Pull images from ECR, run E2E tests ──────────────────────────────
-  e2e-tests:
-    name: E2E Tests
-    needs: push-to-ecr
-    runs-on: ubuntu-latest
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: us-east-1
-
-      - name: Log in to ECR
-        uses: aws-actions/amazon-ecr-login@v2
-
-      - name: Pull backend image from ECR
-        run: docker pull ${{ secrets.ECR_BACKEND_URL }}:${{ github.sha }}
-
-      - name: Build DB image locally
-        run: docker build -t vet-db ./db
-
-      - name: Start DB container
-        run: |
-          docker run -d --name vet-mysql \
-            --network=host \
-            -e MYSQL_ROOT_PASSWORD=pandaTeya \
-            -e MYSQL_DATABASE=vet \
-            vet-db
-
-      - name: Wait for MySQL to be ready
-        run: |
-          for i in $(seq 1 20); do
-            docker exec vet-mysql mysqladmin ping -uroot -ppandaTeya --silent && exit 0
-            sleep 3
-          done
-          docker logs vet-mysql
-          exit 1
-
-      - name: Start backend container
-        run: |
-          docker run -d --name vet-e2e \
-            --network=host \
-            -e FLASK_APP=backend.app \
-            -e DB_HOST=127.0.0.1 \
-            -e DB_PORT=3306 \
-            -e DB_USER=root \
-            -e DB_PASSWORD=pandaTeya \
-            -e DB_NAME=vet \
-            -e JWT_SECRET_KEY=ci-test-secret \
-            -e CORS_ORIGINS=http://localhost:5173 \
-            ${{ secrets.ECR_BACKEND_URL }}:${{ github.sha }}
-
-      - name: Wait for backend
-        run: |
-          for i in $(seq 1 15); do
-            curl -sf http://localhost:5000/health && exit 0
-            sleep 2
-          done
-          docker logs vet-e2e
-          exit 1
-
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.13"
-
-      - name: Install test dependencies
-        run: pip install -r backend/requirements-dev.txt
-
-      - name: Run unit tests
-        run: pytest backend/tests/unit -v
-
-      - name: Run E2E tests
-        run: pytest backend/tests/e2e -v
-
-      - name: Pull and start frontend container
-        run: |
-          docker pull ${{ secrets.ECR_FRONTEND_URL }}:${{ github.sha }}
-          docker run -d --name vet-frontend-e2e \
-            --network=host \
-            ${{ secrets.ECR_FRONTEND_URL }}:${{ github.sha }}
-
-      - name: Smoke test — frontend serves HTML
-        run: |
-          for i in $(seq 1 10); do
-            curl -sf http://localhost:80 | grep -i "html" && exit 0
-            sleep 2
-          done
-          docker logs vet-frontend-e2e
-          exit 1
-
-      - name: Stop and remove containers
-        if: always()
-        run: |
-          docker rm -f vet-e2e || true
-          docker rm -f vet-mysql || true
-          docker rm -f vet-frontend-e2e || true
