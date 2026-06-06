@@ -40,6 +40,7 @@ jobs:
           # Import them into state so apply sees no diff instead of failing with
           # BucketAlreadyExists / ResourceInUseException.
           ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+          echo "ACCOUNT_ID=${ACCOUNT_ID}" >> $GITHUB_ENV
           terraform import aws_s3_bucket.tf_state "teyavet-terraform-state-${ACCOUNT_ID}" 2>/dev/null || true
           terraform import aws_dynamodb_table.tf_lock "teyavet-terraform-locks" 2>/dev/null || true
           terraform import aws_s3_bucket_versioning.tf_state "teyavet-terraform-state-${ACCOUNT_ID}" 2>/dev/null || true
@@ -56,7 +57,9 @@ jobs:
 
       - name: Infra — init
         working-directory: infra
-        run: terraform init
+        run: |
+          terraform init \
+            -backend-config="bucket=teyavet-terraform-state-${ACCOUNT_ID}"
 
       - name: Infra — apply
         working-directory: infra
