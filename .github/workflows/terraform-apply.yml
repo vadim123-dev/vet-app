@@ -65,15 +65,29 @@ jobs:
       - name: Infra — import existing resources
         working-directory: infra
         run: |
-          # Resources that may already exist from a previous partial run.
-          # Import them so apply sees no diff instead of failing with AlreadyExists.
+          # RDS resources: terraform import is fast and reliable for these.
           # Safe to re-run: || true ignores "already in state" or "not found" exits.
-          terraform import aws_iam_policy.lbc \
-            "arn:aws:iam::${ACCOUNT_ID}:policy/teyavet-lbc-policy" 2>/dev/null || true
           terraform import aws_db_subnet_group.main \
             "teyavet-db-subnet-group" 2>/dev/null || true
           terraform import aws_db_parameter_group.mysql8 \
             "teyavet-mysql8" 2>/dev/null || true
+
+          # IAM policy: terraform import hangs for IAM in this environment.
+          # Instead, delete the orphaned policy so Terraform recreates it cleanly.
+          # Only deletes if the policy exists in AWS but is NOT yet in Terraform state.
+          POLICY_ARN="arn:aws:iam::${ACCOUNT_ID}:policy/teyavet-lbc-policy"
+          if aws iam get-policy --policy-arn "$POLICY_ARN" 2>/dev/null && \
+             ! terraform state list 2>/dev/null | grep -q "aws_iam_policy.lbc"; then
+            aws iam list-entities-for-policy --policy-arn "$POLICY_ARN" \
+              --query 'PolicyRoles[].RoleName' --output text 2>/dev/null \
+              | tr '\t' '\n' \
+              | while read -r role; do
+                  [ -n "$role" ] && aws iam detach-role-policy \
+                    --role-name "$role" --policy-arn "$POLICY_ARN" 2>/dev/null || true
+                done
+            aws iam delete-policy --policy-arn "$POLICY_ARN" 2>/dev/null || true
+            echo "Deleted orphaned IAM policy — Terraform will recreate it."
+          fi
 
       - name: Infra — apply
         working-directory: infra
