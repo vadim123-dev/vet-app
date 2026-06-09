@@ -32,6 +32,11 @@ spec:
           ports:
             - containerPort: 5000
               protocol: TCP
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
           env:
             - name: FLASK_APP
               valueFrom:
