@@ -62,14 +62,6 @@ jobs:
             -backend-config="bucket=teyavet-terraform-state-${ACCOUNT_ID}" \
             -reconfigure
 
-      - name: Infra — import existing resources (if re-running)
-        working-directory: infra
-        run: |
-          # Import IAM roles if they already exist (handles re-runs without state)
-          terraform import aws_iam_role.eks_cluster teyavet-eks-cluster-role 2>/dev/null || true
-          terraform import aws_iam_role.eks_nodes teyavet-eks-nodes-role 2>/dev/null || true
-          terraform import aws_iam_role.load_balancer_controller teyavet-load-balancer-controller-role 2>/dev/null || true
-
       - name: Infra — apply
         working-directory: infra
         run: terraform apply -auto-approve -var="db_password=${{ secrets.DB_PASSWORD }}"
