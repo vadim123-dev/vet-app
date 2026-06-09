@@ -2,8 +2,7 @@
 FROM mysql:8.0
 
 # Set environment variables
-ENV MYSQL_ROOT_PASSWORD=pandaTeya \
-    MYSQL_DATABASE=vet
+ENV MYSQL_DATABASE=vet
 
 # Copy initialization scripts
 COPY init/schema.sql /docker-entrypoint-initdb.d/01-schema.sql
