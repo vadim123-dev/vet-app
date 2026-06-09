@@ -98,7 +98,9 @@ fi
 # ── Step 5: terraform init (in case backend config changed) ──────────────────
 log "Initializing Terraform..."
 cd "$INFRA_DIR"
-terraform init -backend-config="bucket=teyavet-terraform-state-257014219799" -reconfigure -input=false 2>&1 | grep -v "^$" | grep -v "Reusing\|Using previously"
+ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+BACKEND_BUCKET="teyavet-terraform-state-${ACCOUNT_ID}"
+terraform init -backend-config="bucket=${BACKEND_BUCKET}" -reconfigure -input=false 2>&1 | grep -v "^$" | grep -v "Reusing\|Using previously"
 
 # ── Step 6: terraform destroy ─────────────────────────────────────────────────
 log "Running terraform destroy..."
