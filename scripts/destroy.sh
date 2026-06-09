@@ -100,10 +100,17 @@ log "Initializing Terraform..."
 cd "$INFRA_DIR"
 ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
 BACKEND_BUCKET="teyavet-terraform-state-${ACCOUNT_ID}"
-terraform init -backend-config="bucket=${BACKEND_BUCKET}" -reconfigure -input=false 2>&1 | grep -v "^$" | grep -v "Reusing\|Using previously"
+terraform init \
+  -backend-config="bucket=${BACKEND_BUCKET}" \
+  -backend-config="key=teyavet/terraform.tfstate" \
+  -backend-config="region=${REGION}" \
+  -backend-config="dynamodb_table=teyavet-terraform-locks" \
+  -backend-config="encrypt=true" \
+  -reconfigure \
+  -input=false 2>&1 | grep -v "^$" | grep -v "Reusing\|Using previously"
 
 # ── Step 6: terraform destroy ─────────────────────────────────────────────────
 log "Running terraform destroy..."
-terraform destroy -auto-approve
+terraform destroy -auto-approve -var="db_password=${TF_VAR_db_password}"
 
 log "Destroy complete. All infrastructure removed."
