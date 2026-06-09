@@ -59,7 +59,8 @@ jobs:
         working-directory: infra
         run: |
           terraform init \
-            -backend-config="bucket=teyavet-terraform-state-${ACCOUNT_ID}"
+            -backend-config="bucket=teyavet-terraform-state-${ACCOUNT_ID}" \
+            -reconfigure
 
       - name: Infra — import existing resources (if re-running)
         working-directory: infra
