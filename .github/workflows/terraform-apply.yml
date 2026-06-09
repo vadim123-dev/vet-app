@@ -62,6 +62,19 @@ jobs:
             -backend-config="bucket=teyavet-terraform-state-${ACCOUNT_ID}" \
             -reconfigure
 
+      - name: Infra — import existing resources
+        working-directory: infra
+        run: |
+          # Resources that may already exist from a previous partial run.
+          # Import them so apply sees no diff instead of failing with AlreadyExists.
+          # Safe to re-run: || true ignores "already in state" or "not found" exits.
+          terraform import aws_iam_policy.lbc \
+            "arn:aws:iam::${ACCOUNT_ID}:policy/teyavet-lbc-policy" 2>/dev/null || true
+          terraform import aws_db_subnet_group.main \
+            "teyavet-db-subnet-group" 2>/dev/null || true
+          terraform import aws_db_parameter_group.mysql8 \
+            "teyavet-mysql8" 2>/dev/null || true
+
       - name: Infra — apply
         working-directory: infra
         run: terraform apply -auto-approve -var="db_password=${{ secrets.DB_PASSWORD }}"
