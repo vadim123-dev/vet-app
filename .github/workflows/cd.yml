@@ -108,6 +108,24 @@ jobs:
           docker logs vet-frontend
           exit 1
 
+      - name: Scan backend image for vulnerabilities
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: vet-backend:${{ github.sha }}
+          format: table
+          exit-code: "1"
+          severity: CRITICAL
+          ignore-unfixed: true
+
+      - name: Scan frontend image for vulnerabilities
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: vet-frontend:${{ github.sha }}
+          format: table
+          exit-code: "1"
+          severity: CRITICAL
+          ignore-unfixed: true
+
       - name: Stop and remove containers
         if: always()
         run: |
