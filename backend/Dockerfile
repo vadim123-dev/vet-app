@@ -11,6 +11,10 @@ RUN pip install --no-cache-dir -U pip setuptools && \
 # Copy source into backend/ so internal imports (from backend.xxx) resolve
 COPY . ./backend/
 
+# Create non-root user
+RUN useradd --no-create-home --shell /bin/false appuser
+USER appuser
+
 # Expose Flask port
 EXPOSE 5000
 
