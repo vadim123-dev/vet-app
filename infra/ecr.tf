@@ -1,3 +1,13 @@
+import {
+  to = aws_ecr_repository.backend
+  id = "teyavet/backend"
+}
+
+import {
+  to = aws_ecr_repository.frontend
+  id = "teyavet/frontend"
+}
+
 resource "aws_ecr_repository" "backend" {
   name                 = "${var.project}/backend"
   image_tag_mutability = "MUTABLE"

@@ -17,7 +17,7 @@ BLUE='\033[0;34m'
 NC='\033[0m'
 
 pass()  { echo -e "${GREEN}✓${NC} $*"; }
-fail()  { echo -e "${RED}✗${NC} $*"; exit 1; }
+fail()  { echo -e "${RED}✗${NC} $*"; }
 warn()  { echo -e "${YELLOW}⚠${NC} $*"; }
 info()  { echo -e "${BLUE}ℹ${NC} $*"; }
 header() { echo -e "\n${BLUE}═══ $* ═══${NC}\n"; }
@@ -29,14 +29,14 @@ FAILED=0
 check_resource() {
   local name=$1
   local cmd=$2
-  local expected=$3
+  local expected=${3:-}
 
   if eval "$cmd" &>/dev/null; then
     pass "$name"
-    ((PASSED++))
+    PASSED=$((PASSED+1))
   else
     fail "$name"
-    ((FAILED++))
+    FAILED=$((FAILED+1))
   fi
 }
 
@@ -60,7 +60,7 @@ VPC_ID=$(aws ec2 describe-vpcs --region $REGION \
 
 if [[ -n "$VPC_ID" && "$VPC_ID" != "None" ]]; then
   pass "VPC created: $VPC_ID"
-  ((PASSED++))
+  PASSED=$((PASSED+1))
 
   # Public subnets
   PUB_COUNT=$(aws ec2 describe-subnets --region $REGION \
@@ -68,10 +68,10 @@ if [[ -n "$VPC_ID" && "$VPC_ID" != "None" ]]; then
     --query 'length(Subnets)' --output text 2>/dev/null || echo "0")
   if [[ "$PUB_COUNT" == "2" ]]; then
     pass "Public subnets: $PUB_COUNT (expected 2)"
-    ((PASSED++))
+    PASSED=$((PASSED+1))
   else
     fail "Public subnets: found $PUB_COUNT, expected 2"
-    ((FAILED++))
+    FAILED=$((FAILED+1))
   fi
 
   # Private subnets
@@ -80,10 +80,10 @@ if [[ -n "$VPC_ID" && "$VPC_ID" != "None" ]]; then
     --query 'length(Subnets)' --output text 2>/dev/null || echo "0")
   if [[ "$PRIV_COUNT" == "2" ]]; then
     pass "Private subnets: $PRIV_COUNT (expected 2)"
-    ((PASSED++))
+    PASSED=$((PASSED+1))
   else
     fail "Private subnets: found $PRIV_COUNT, expected 2"
-    ((FAILED++))
+    FAILED=$((FAILED+1))
   fi
 
   # IGW
@@ -100,7 +100,7 @@ if [[ -n "$VPC_ID" && "$VPC_ID" != "None" ]]; then
 
 else
   fail "VPC not found (tag Name=${PROJECT}-vpc)"
-  ((FAILED++))
+  FAILED=$((FAILED+1))
 fi
 
 header "3. EKS Cluster"
@@ -113,7 +113,7 @@ CLUSTER_STATUS=$(aws eks describe-cluster --name $CLUSTER_NAME --region $REGION 
 info "Cluster status: $CLUSTER_STATUS"
 if [[ "$CLUSTER_STATUS" == "ACTIVE" ]]; then
   pass "EKS cluster is ACTIVE"
-  ((PASSED++))
+  PASSED=$((PASSED+1))
 else
   warn "EKS cluster status is $CLUSTER_STATUS (expected ACTIVE)"
 fi
@@ -136,7 +136,7 @@ RDS_STATUS=$(aws rds describe-db-instances --db-instance-identifier ${PROJECT}-m
 info "RDS status: $RDS_STATUS"
 if [[ "$RDS_STATUS" == "available" ]]; then
   pass "RDS is available"
-  ((PASSED++))
+  PASSED=$((PASSED+1))
 else
   warn "RDS status is $RDS_STATUS (expected 'available')"
 fi
@@ -147,20 +147,20 @@ info "RDS endpoint: $RDS_HOST"
 
 header "5. ECR Repositories"
 check_resource "ECR backend repository" \
-  "aws ecr describe-repositories --repository-names ${PROJECT}-backend --region $REGION"
+  "aws ecr describe-repositories --repository-names ${PROJECT}/backend --region $REGION"
 
 check_resource "ECR frontend repository" \
-  "aws ecr describe-repositories --repository-names ${PROJECT}-frontend --region $REGION"
+  "aws ecr describe-repositories --repository-names ${PROJECT}/frontend --region $REGION"
 
 header "6. Security Groups"
 check_resource "EKS security group" \
   "aws ec2 describe-security-groups --region $REGION \
-    --filters \"Name=vpc-id,Values=$VPC_ID\" \"Name=tag:Name,Values=${PROJECT}-eks-nodes\" \
+    --filters \"Name=vpc-id,Values=$VPC_ID\" \"Name=tag:Name,Values=${PROJECT}-eks-nodes-sg\" \
     --query 'SecurityGroups[0].GroupId' | grep -q sg"
 
 check_resource "RDS security group" \
   "aws ec2 describe-security-groups --region $REGION \
-    --filters \"Name=vpc-id,Values=$VPC_ID\" \"Name=tag:Name,Values=${PROJECT}-rds\" \
+    --filters \"Name=vpc-id,Values=$VPC_ID\" \"Name=tag:Name,Values=${PROJECT}-rds-sg\" \
     --query 'SecurityGroups[0].GroupId' | grep -q sg"
 
 header "7. IAM Roles"
@@ -168,7 +168,7 @@ check_resource "EKS cluster IAM role" \
   "aws iam get-role --role-name ${PROJECT}-eks-cluster-role"
 
 check_resource "EKS node IAM role" \
-  "aws iam get-role --role-name ${PROJECT}-eks-nodes-role"
+  "aws iam get-role --role-name ${PROJECT}-eks-node-role"
 
 header "📊 Summary"
 TOTAL=$((PASSED + FAILED))
