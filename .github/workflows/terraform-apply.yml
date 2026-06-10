@@ -61,6 +61,18 @@ jobs:
           terraform init \
             -backend-config="bucket=teyavet-terraform-state-${ACCOUNT_ID}"
 
+      - name: Infra — import existing resources
+        working-directory: infra
+        run: |
+          # RDS subnet group and parameter group may survive a partial destroy.
+          # Import them so apply sees no diff instead of failing with AlreadyExists.
+          terraform import -var="db_password=${{ secrets.DB_PASSWORD }}" \
+            aws_db_subnet_group.main teyavet-db-subnet-group 2>/dev/null || true
+          terraform import -var="db_password=${{ secrets.DB_PASSWORD }}" \
+            aws_db_parameter_group.mysql8 teyavet-mysql8 2>/dev/null || true
+          terraform import -var="db_password=${{ secrets.DB_PASSWORD }}" \
+            aws_db_instance.mysql teyavet-mysql 2>/dev/null || true
+
       - name: Infra — apply
         working-directory: infra
         run: terraform apply -auto-approve -var="db_password=${{ secrets.DB_PASSWORD }}"
