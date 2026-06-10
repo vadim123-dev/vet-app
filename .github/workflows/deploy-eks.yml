@@ -64,14 +64,13 @@ jobs:
             --dry-run=client -o yaml | kubectl apply -f -
 
       - name: Apply / update ConfigMap
-        env:
-          ALB_DNS: ${{ secrets.ALB_DNS }}
         run: |
+          # Apply with RDS_HOST resolved now; ALB_DNS will be corrected after ingress provisioning.
           RDS_HOST=$(aws rds describe-db-instances \
             --db-instance-identifier teyavet-mysql \
             --query 'DBInstances[0].Endpoint.Address' \
             --output text)
-          export RDS_HOST
+          export RDS_HOST ALB_DNS="${{ secrets.ALB_DNS }}"
           envsubst < k8s/backend/configmap.yaml | kubectl apply -f -
 
       - name: Create ConfigMap with SQL migration files
@@ -96,6 +95,33 @@ jobs:
           kubectl apply -f k8s/backend/service.yaml
           kubectl apply -f k8s/frontend/service.yaml
           kubectl apply -f k8s/ingress.yaml
+
+      - name: Wait for ALB and refresh ConfigMap with live hostname
+        run: |
+          # The Load Balancer Controller provisions the ALB asynchronously after the
+          # Ingress is created. Poll until we have a hostname (usually 1-2 min).
+          echo "Waiting for ALB hostname..."
+          ALB=""
+          for i in $(seq 1 18); do
+            ALB=$(kubectl get ingress teyavet-ingress -n teyavet \
+              -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null)
+            [[ -n "$ALB" ]] && break
+            echo "  (${i}0s) still provisioning..."
+            sleep 10
+          done
+          if [[ -z "$ALB" ]]; then
+            echo "ALB not ready after 3 min — falling back to ALB_DNS secret (may be stale)"
+            ALB="${{ secrets.ALB_DNS }}"
+          fi
+          echo "ALB_DNS=${ALB}" >> "$GITHUB_ENV"
+          # Re-apply ConfigMap so CORS_ORIGINS has the live hostname before pods start
+          RDS_HOST=$(aws rds describe-db-instances \
+            --db-instance-identifier teyavet-mysql \
+            --query 'DBInstances[0].Endpoint.Address' \
+            --output text)
+          export RDS_HOST ALB_DNS="$ALB"
+          envsubst < k8s/backend/configmap.yaml | kubectl apply -f -
+          echo "ConfigMap updated — CORS_ORIGINS=http://${ALB}"
 
       - name: Deploy backend
         run: |
@@ -123,12 +149,7 @@ jobs:
 
       - name: Print app URL
         run: |
-          ALB=$(kubectl get ingress teyavet-ingress -n teyavet \
-            -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || echo "pending — check back in 2 min")
           echo "========================================"
-          echo "  App URL : http://${ALB}"
-          echo "  Health  : http://${ALB}/health"
+          echo "  App URL : http://${ALB_DNS}"
+          echo "  Health  : http://${ALB_DNS}/health"
           echo "========================================"
-          echo ""
-          echo "If ALB_DNS secret is not yet set, copy the URL above and add it as a"
-          echo "GitHub secret named ALB_DNS for CORS_ORIGINS in future deployments."

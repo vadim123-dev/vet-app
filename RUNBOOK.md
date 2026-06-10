@@ -25,18 +25,17 @@ aws configure
 
 **Location:** GitHub repo → Settings → Secrets and variables → Actions → New repository secret
 
-| Secret | What it is | Where to get it |
-|--------|-----------|-----------------|
-| `AWS_ACCESS_KEY_ID` | IAM user access key | `~/.aws/credentials` or AWS Console → IAM → Users → Security credentials |
-| `AWS_SECRET_ACCESS_KEY` | IAM user secret key | Same as above |
-| `ECR_BACKEND_URL` | ECR repo URL for the Flask backend image | `terraform output ecr_backend_url` after Phase 2 |
-| `ECR_FRONTEND_URL` | ECR repo URL for the React frontend image | `terraform output ecr_frontend_url` after Phase 2 |
-| `RDS_HOST` | RDS MySQL hostname (no port) | `terraform output rds_host` after Phase 2 |
-| `DB_PASSWORD` | RDS master password (used by backend pods and migration job) | The value you passed as `db_password` to `terraform apply` |
-| `JWT_SECRET_KEY` | Secret used to sign JWTs — any strong random string | `openssl rand -hex 32` |
-| `ALB_DNS` | ALB hostname — controls the CORS allowed origin | Printed by "Deploy to EKS" workflow after first deploy; update this secret on subsequent deploys if it changes |
+| Secret | What it is | Where to get it | Changes after destroy? |
+|--------|-----------|-----------------|------------------------|
+| `AWS_ACCESS_KEY_ID` | IAM user access key | `~/.aws/credentials` or AWS Console → IAM → Users → Security credentials | No |
+| `AWS_SECRET_ACCESS_KEY` | IAM user secret key | Same as above | No |
+| `ECR_BACKEND_URL` | ECR repo URL for the Flask backend image | `terraform output ecr_backend_url` after Phase 2 | No — built from account ID which never changes |
+| `ECR_FRONTEND_URL` | ECR repo URL for the React frontend image | `terraform output ecr_frontend_url` after Phase 2 | No — same reason |
+| `DB_PASSWORD` | RDS master password (used by backend pods and migration job) | The value you passed as `db_password` to `terraform apply` | No |
+| `JWT_SECRET_KEY` | Secret used to sign JWTs — any strong random string | `openssl rand -hex 32` | No |
+| `ALB_DNS` | ALB hostname — used as CORS fallback only | Printed by "Deploy to EKS" workflow; **optional** — the deploy workflow resolves the live hostname automatically | Handled automatically |
 
-> **After `terraform destroy`**: `RDS_HOST`, `ECR_BACKEND_URL`, `ECR_FRONTEND_URL`, and `ALB_DNS` all change on the next `terraform apply`. Update those 4 secrets before re-running the deploy workflow.
+> **`RDS_HOST` is no longer a secret** — the deploy workflow queries the RDS endpoint dynamically via AWS CLI so it's always correct regardless of recreates.
 
 ---
 
@@ -75,8 +74,24 @@ terraform output
 
 ### Phase 3 — Set GitHub Secrets
 
-Using the `terraform output` values, set all 8 secrets listed in the table above.  
-`ALB_DNS` doesn't exist yet — leave it empty for now. You'll get it after the first deploy.
+Set the following secrets once (they never change between destroy/recreate cycles):
+
+```bash
+# Get ECR URLs (account ID never changes, so these are permanent)
+terraform -chdir=infra output ecr_backend_url
+terraform -chdir=infra output ecr_frontend_url
+```
+
+| Secret | Value |
+|--------|-------|
+| `AWS_ACCESS_KEY_ID` | From `~/.aws/credentials` |
+| `AWS_SECRET_ACCESS_KEY` | From `~/.aws/credentials` |
+| `ECR_BACKEND_URL` | From `terraform output ecr_backend_url` |
+| `ECR_FRONTEND_URL` | From `terraform output ecr_frontend_url` |
+| `DB_PASSWORD` | The password you use for `terraform apply` |
+| `JWT_SECRET_KEY` | `openssl rand -hex 32` |
+
+`RDS_HOST` and `ALB_DNS` are resolved automatically by the deploy workflow — no manual secret needed.
 
 ### Phase 4 — Build and push Docker images to ECR
 
@@ -101,20 +116,15 @@ The workflow:
 1. Installs the **AWS Load Balancer Controller** via Helm (idempotent — safe to re-run)
 2. Creates the `teyavet` namespace
 3. Creates the `backend-secrets` K8s Secret (DB_PASSWORD + JWT_SECRET_KEY)
-4. Applies the ConfigMap (with RDS_HOST + ALB_DNS substituted in)
+4. Applies the ConfigMap — resolves `RDS_HOST` live from AWS, uses `ALB_DNS` secret as placeholder
 5. Runs the DB migration Job (applies `schema.sql` + `seed_data.sql` to RDS)
-6. Applies Services and the Ingress (this triggers ALB provisioning)
-7. Deploys backend (2 replicas) + frontend (2 replicas)
-8. Waits for rollout
-9. **Prints the ALB URL** — copy this
+6. Applies Services and the Ingress (triggers ALB provisioning)
+7. Waits for the ALB hostname to be assigned, then **re-applies the ConfigMap** with the live hostname so `CORS_ORIGINS` is correct from the first deploy
+8. Deploys backend (2 replicas) + frontend (2 replicas)
+9. Waits for rollout
+10. **Prints the app URL**
 
-### Phase 6 — Set ALB_DNS secret and redeploy
-
-1. Copy the ALB hostname from the deploy logs
-2. Add/update the `ALB_DNS` GitHub Secret with that value
-3. Re-run "Deploy to EKS" — this updates `CORS_ORIGINS` in the ConfigMap
-
-Your app is now live at `http://<ALB_DNS>`.
+Your app is now live at the printed URL. No re-run needed.
 
 ---
 
@@ -123,11 +133,11 @@ Your app is now live at `http://<ALB_DNS>`.
 On every `git push` to `master` the CD pipeline rebuilds and pushes new images.  
 To deploy those new images to EKS: **Actions → Deploy to EKS → Run workflow**.
 
-**Secrets that change and need updating:**
+**Secrets that ever need updating:**
 
 | Scenario | Secrets to update |
 |----------|------------------|
-| After `terraform destroy` + `terraform apply` | `RDS_HOST`, `ECR_BACKEND_URL`, `ECR_FRONTEND_URL`, `ALB_DNS` |
+| After `terraform destroy` + `terraform apply` | Nothing — `RDS_HOST` and `ALB_DNS` are resolved automatically |
 | AWS IAM key rotation | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` |
 | DB password change | `DB_PASSWORD` |
 | JWT secret rotation | `JWT_SECRET_KEY` |
@@ -136,12 +146,13 @@ To deploy those new images to EKS: **Actions → Deploy to EKS → Run workflow*
 
 ## Tearing down
 
+Use the destroy script — it handles Kubernetes cleanup, Terraform destroy, and bootstrap resource deletion in the correct order:
+
 ```bash
-cd infra
-terraform destroy -var="db_password=YOUR_PASSWORD"
+DB_PASSWORD=YOUR_PASSWORD ./scripts/destroy.sh
 ```
 
-> **Note:** `terraform destroy` does NOT delete the ECR images or the S3 state bucket. ECR images are cleaned up by the lifecycle policy (keeps last 10 tagged). The S3 bucket has `force_destroy = false` intentionally — delete it manually from the AWS Console if you want to fully clean up.
+This removes everything: VPC, EKS, RDS, ECR repos, IAM roles, the S3 state bucket, and the DynamoDB lock table.
 
 ---
 
