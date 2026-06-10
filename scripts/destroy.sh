@@ -113,30 +113,25 @@ log "Destroying bootstrap resources (S3 state bucket + DynamoDB lock table)..."
 BUCKET="teyavet-terraform-state-${ACCOUNT_ID}"
 
 if aws s3api head-bucket --bucket "$BUCKET" 2>/dev/null; then
-  log "Emptying S3 bucket $BUCKET (versioning requires deleting all versions + markers)..."
+  log "Emptying S3 bucket $BUCKET (deleting all versions and delete markers)..."
 
-  # Dump all versions to a temp file, then use Python to batch-delete.
-  # Avoids the JMESPath 'Quiet: true' bug (true resolves to null in JMESPath)
-  # and the pipe+heredoc stdin conflict.
-  TMP_VERSIONS=$(mktemp)
-  aws s3api list-object-versions --bucket "$BUCKET" --output json > "$TMP_VERSIONS" 2>/dev/null || true
-  python3 << PYEOF
-import json, subprocess
-with open("$TMP_VERSIONS") as f:
-    data = json.load(f)
-objects = [
-    {"Key": v["Key"], "VersionId": v["VersionId"]}
-    for v in data.get("Versions", []) + data.get("DeleteMarkers", [])
-]
-if objects:
-    payload = json.dumps({"Objects": objects, "Quiet": True})
-    subprocess.run(
-        ["aws", "s3api", "delete-objects", "--bucket", "$BUCKET", "--delete", payload],
-        check=True, capture_output=True
-    )
-    print(f"Deleted {len(objects)} versions/markers from $BUCKET")
-PYEOF
-  rm -f "$TMP_VERSIONS"
+  # Delete each version individually — simpler and more reliable than batch delete,
+  # which returns HTTP 200 even on partial failures and silently drops errors.
+  aws s3api list-object-versions --bucket "$BUCKET" \
+      --query 'Versions[*].[Key, VersionId]' --output text 2>/dev/null \
+    | grep -v '^None$' \
+    | while IFS=$'\t' read -r KEY VID; do
+        [[ -z "$KEY" || -z "$VID" ]] && continue
+        aws s3api delete-object --bucket "$BUCKET" --key "$KEY" --version-id "$VID" >/dev/null
+      done || true
+
+  aws s3api list-object-versions --bucket "$BUCKET" \
+      --query 'DeleteMarkers[*].[Key, VersionId]' --output text 2>/dev/null \
+    | grep -v '^None$' \
+    | while IFS=$'\t' read -r KEY VID; do
+        [[ -z "$KEY" || -z "$VID" ]] && continue
+        aws s3api delete-object --bucket "$BUCKET" --key "$KEY" --version-id "$VID" >/dev/null
+      done || true
 
   log "Deleting S3 bucket $BUCKET..."
   aws s3 rb "s3://${BUCKET}" || warn "S3 bucket deletion failed — check for remaining objects"
