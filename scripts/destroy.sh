@@ -106,4 +106,45 @@ terraform init -backend-config="bucket=${BACKEND_BUCKET}" -reconfigure -input=fa
 log "Running terraform destroy..."
 terraform destroy -auto-approve
 
-log "Destroy complete. All infrastructure removed."
+# ── Step 7: destroy bootstrap resources (S3 state bucket + DynamoDB lock table)
+# These are created by infra/bootstrap/ which has no remote backend, so we
+# delete them directly with the AWS CLI instead of via terraform.
+log "Destroying bootstrap resources (S3 state bucket + DynamoDB lock table)..."
+BUCKET="teyavet-terraform-state-${ACCOUNT_ID}"
+
+if aws s3api head-bucket --bucket "$BUCKET" 2>/dev/null; then
+  log "Emptying S3 bucket $BUCKET (versioning requires deleting all versions + markers)..."
+
+  # Delete all object versions (|| assignment guards against set -e on empty bucket)
+  VERSIONS=$(aws s3api list-object-versions --bucket "$BUCKET" \
+    --query '{Objects: Versions[].{Key:Key,VersionId:VersionId}, Quiet: true}' \
+    --output json 2>/dev/null) || VERSIONS="{}"
+  if [[ "$VERSIONS" == *'"VersionId"'* ]]; then
+    aws s3api delete-objects --bucket "$BUCKET" --delete "$VERSIONS" >/dev/null
+  fi
+
+  # Delete all delete markers left by versioning
+  MARKERS=$(aws s3api list-object-versions --bucket "$BUCKET" \
+    --query '{Objects: DeleteMarkers[].{Key:Key,VersionId:VersionId}, Quiet: true}' \
+    --output json 2>/dev/null) || MARKERS="{}"
+  if [[ "$MARKERS" == *'"VersionId"'* ]]; then
+    aws s3api delete-objects --bucket "$BUCKET" --delete "$MARKERS" >/dev/null
+  fi
+
+  log "Deleting S3 bucket $BUCKET..."
+  aws s3 rb "s3://${BUCKET}" || warn "S3 bucket deletion failed — check for remaining objects"
+else
+  warn "S3 bucket $BUCKET not found — already deleted"
+fi
+
+DYNAMO="teyavet-terraform-locks"
+if aws dynamodb describe-table --table-name "$DYNAMO" --region "$REGION" 2>/dev/null | grep -q "ACTIVE\|DELETING"; then
+  log "Deleting DynamoDB table $DYNAMO..."
+  aws dynamodb delete-table --table-name "$DYNAMO" --region "$REGION" >/dev/null
+  aws dynamodb wait table-not-exists --table-name "$DYNAMO" --region "$REGION"
+  log "DynamoDB table deleted."
+else
+  warn "DynamoDB table $DYNAMO not found — already deleted"
+fi
+
+log "Full teardown complete — all AWS resources removed."
