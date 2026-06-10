@@ -115,21 +115,28 @@ BUCKET="teyavet-terraform-state-${ACCOUNT_ID}"
 if aws s3api head-bucket --bucket "$BUCKET" 2>/dev/null; then
   log "Emptying S3 bucket $BUCKET (versioning requires deleting all versions + markers)..."
 
-  # Delete all object versions (|| assignment guards against set -e on empty bucket)
-  VERSIONS=$(aws s3api list-object-versions --bucket "$BUCKET" \
-    --query '{Objects: Versions[].{Key:Key,VersionId:VersionId}, Quiet: true}' \
-    --output json 2>/dev/null) || VERSIONS="{}"
-  if [[ "$VERSIONS" == *'"VersionId"'* ]]; then
-    aws s3api delete-objects --bucket "$BUCKET" --delete "$VERSIONS" >/dev/null
-  fi
-
-  # Delete all delete markers left by versioning
-  MARKERS=$(aws s3api list-object-versions --bucket "$BUCKET" \
-    --query '{Objects: DeleteMarkers[].{Key:Key,VersionId:VersionId}, Quiet: true}' \
-    --output json 2>/dev/null) || MARKERS="{}"
-  if [[ "$MARKERS" == *'"VersionId"'* ]]; then
-    aws s3api delete-objects --bucket "$BUCKET" --delete "$MARKERS" >/dev/null
-  fi
+  # Dump all versions to a temp file, then use Python to batch-delete.
+  # Avoids the JMESPath 'Quiet: true' bug (true resolves to null in JMESPath)
+  # and the pipe+heredoc stdin conflict.
+  TMP_VERSIONS=$(mktemp)
+  aws s3api list-object-versions --bucket "$BUCKET" --output json > "$TMP_VERSIONS" 2>/dev/null || true
+  python3 << PYEOF
+import json, subprocess
+with open("$TMP_VERSIONS") as f:
+    data = json.load(f)
+objects = [
+    {"Key": v["Key"], "VersionId": v["VersionId"]}
+    for v in data.get("Versions", []) + data.get("DeleteMarkers", [])
+]
+if objects:
+    payload = json.dumps({"Objects": objects, "Quiet": True})
+    subprocess.run(
+        ["aws", "s3api", "delete-objects", "--bucket", "$BUCKET", "--delete", payload],
+        check=True, capture_output=True
+    )
+    print(f"Deleted {len(objects)} versions/markers from $BUCKET")
+PYEOF
+  rm -f "$TMP_VERSIONS"
 
   log "Deleting S3 bucket $BUCKET..."
   aws s3 rb "s3://${BUCKET}" || warn "S3 bucket deletion failed — check for remaining objects"
