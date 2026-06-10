@@ -115,23 +115,20 @@ BUCKET="teyavet-terraform-state-${ACCOUNT_ID}"
 if aws s3api head-bucket --bucket "$BUCKET" 2>/dev/null; then
   log "Emptying S3 bucket $BUCKET (deleting all versions and delete markers)..."
 
-  # Delete each version individually — simpler and more reliable than batch delete,
-  # which returns HTTP 200 even on partial failures and silently drops errors.
+  # Write versions + markers to a temp file so the while loop runs in the current
+  # shell (not a pipe subshell). Pipe subshells inherit set -e and silently abort
+  # on the first delete-object failure, leaving remaining versions in place.
+  TMP_LIST=$(mktemp)
   aws s3api list-object-versions --bucket "$BUCKET" \
-      --query 'Versions[*].[Key, VersionId]' --output text 2>/dev/null \
-    | grep -v '^None$' \
-    | while IFS=$'\t' read -r KEY VID; do
-        [[ -z "$KEY" || -z "$VID" ]] && continue
-        aws s3api delete-object --bucket "$BUCKET" --key "$KEY" --version-id "$VID" >/dev/null
-      done || true
+      --query 'Versions[*].[Key, VersionId]' --output text 2>/dev/null >> "$TMP_LIST" || true
+  aws s3api list-object-versions --bucket "$BUCKET" \
+      --query 'DeleteMarkers[*].[Key, VersionId]' --output text 2>/dev/null >> "$TMP_LIST" || true
 
-  aws s3api list-object-versions --bucket "$BUCKET" \
-      --query 'DeleteMarkers[*].[Key, VersionId]' --output text 2>/dev/null \
-    | grep -v '^None$' \
-    | while IFS=$'\t' read -r KEY VID; do
-        [[ -z "$KEY" || -z "$VID" ]] && continue
-        aws s3api delete-object --bucket "$BUCKET" --key "$KEY" --version-id "$VID" >/dev/null
-      done || true
+  while IFS=$'\t' read -r KEY VID; do
+    [[ -z "$KEY" || -z "$VID" || "$KEY" == "None" ]] && continue
+    aws s3api delete-object --bucket "$BUCKET" --key "$KEY" --version-id "$VID" >/dev/null 2>&1 || true
+  done < "$TMP_LIST"
+  rm -f "$TMP_LIST"
 
   log "Deleting S3 bucket $BUCKET..."
   aws s3 rb "s3://${BUCKET}" || warn "S3 bucket deletion failed — check for remaining objects"
