@@ -41,90 +41,59 @@ aws configure
 
 ## Full deployment order
 
-### Phase 1 — Bootstrap Terraform state backend
+Everything runs via GitHub Actions. No local Terraform needed.
 
-> Skip if the S3 bucket `teyavet-terraform-state-<account-id>` already exists.
+### Step 1 — Secrets (one-time setup, never changes)
 
-```bash
-cd infra/bootstrap
-terraform init
-terraform apply
-```
-
-Creates:
-- S3 bucket for Terraform remote state (versioned + AES-256 encrypted)
-- DynamoDB table for state locking
-
-### Phase 2 — Provision AWS infrastructure
-
-```bash
-cd infra
-terraform init          # connects to the S3 backend created in Phase 1
-terraform plan  -var="db_password=YOUR_PASSWORD"
-terraform apply -var="db_password=YOUR_PASSWORD"
-```
-
-Takes ~15 minutes (EKS cluster is slow). Creates: VPC, subnets, NAT gateway, EKS cluster + node group, RDS MySQL, ECR repos, IAM roles, security groups.
-
-After apply, save the outputs — you need them for GitHub Secrets:
-
-```bash
-terraform output
-```
-
-### Phase 3 — Set GitHub Secrets
-
-Set the following secrets once (they never change between destroy/recreate cycles):
-
-```bash
-# Get ECR URLs (account ID never changes, so these are permanent)
-terraform -chdir=infra output ecr_backend_url
-terraform -chdir=infra output ecr_frontend_url
-```
+**GitHub repo → Settings → Secrets and variables → Actions**
 
 | Secret | Value |
 |--------|-------|
 | `AWS_ACCESS_KEY_ID` | From `~/.aws/credentials` |
 | `AWS_SECRET_ACCESS_KEY` | From `~/.aws/credentials` |
-| `ECR_BACKEND_URL` | From `terraform output ecr_backend_url` |
-| `ECR_FRONTEND_URL` | From `terraform output ecr_frontend_url` |
-| `DB_PASSWORD` | The password you use for `terraform apply` |
-| `JWT_SECRET_KEY` | `openssl rand -hex 32` |
+| `ECR_BACKEND_URL` | `257014219799.dkr.ecr.us-east-1.amazonaws.com/teyavet/backend` |
+| `ECR_FRONTEND_URL` | `257014219799.dkr.ecr.us-east-1.amazonaws.com/teyavet/frontend` |
+| `DB_PASSWORD` | Any strong password — used for RDS and backend pods |
+| `JWT_SECRET_KEY` | Any strong random string — `openssl rand -hex 32` |
 
-`RDS_HOST` and `ALB_DNS` are resolved automatically by the deploy workflow — no manual secret needed.
+`RDS_HOST` and `ALB_DNS` are **not needed** — the deploy workflow resolves them automatically.
 
-### Phase 4 — Build and push Docker images to ECR
+### Step 2 — Provision infrastructure
 
-Push any commit to `master`. The **CD — Build, Push & Test** workflow runs automatically:
-1. Builds backend + frontend Docker images
-2. Smoke-tests them locally in CI
-3. Pushes `:<sha>` and `:latest` tags to ECR
-4. Pulls from ECR and runs full E2E tests
+**GitHub → Actions → Terraform — Apply Infrastructure → Run workflow**  
+Select branch: `master`. Requires approval from the `production` environment gate.
+
+Takes ~15 min. Creates: VPC, EKS cluster, RDS MySQL, ECR repos, IAM roles.  
+Safe to re-run — handles existing/orphaned resources automatically.
+
+### Step 3 — Build and push Docker images
+
+Merge any PR to `master` (or push an empty commit). The **CD — Build, Push & Test** workflow runs automatically:
 
 ```bash
-git commit --allow-empty -m "[CI] - trigger initial ECR push"
-git push origin master
+git commit --allow-empty -m "[CI] - trigger ECR push" && git push origin master
 ```
 
-Wait for the workflow to go green (~10 min) before continuing.
+Wait for it to go green (~10 min) before the next step.
 
-### Phase 5 — Deploy to EKS
+> **After a fresh destroy+apply**: ECR repos are recreated empty. Re-trigger CD after terraform-apply completes so images exist before deploy.
 
-Go to **GitHub → Actions → Deploy to EKS → Run workflow** (leave tag as `latest`).
+### Step 4 — Deploy to EKS
+
+**GitHub → Actions → Deploy to EKS → Run workflow**  
+Leave tag as `latest`. Requires approval from the `production` environment gate.
 
 The workflow:
-1. Installs the **AWS Load Balancer Controller** via Helm (idempotent — safe to re-run)
-2. Creates the `teyavet` namespace
-3. Creates the `backend-secrets` K8s Secret (DB_PASSWORD + JWT_SECRET_KEY)
-4. Applies the ConfigMap — resolves `RDS_HOST` live from AWS, uses `ALB_DNS` secret as placeholder
-5. Runs the DB migration Job (applies `schema.sql` + `seed_data.sql` to RDS)
-6. Applies Services and the Ingress (triggers ALB provisioning)
-7. Waits for the ALB hostname to be assigned, then **re-applies the ConfigMap** with the live hostname so `CORS_ORIGINS` is correct from the first deploy
-8. Deploys backend (2 replicas) + frontend (2 replicas)
-9. Waits for rollout
-10. **Prints the app URL**
+1. Installs the AWS Load Balancer Controller via Helm
+2. Creates the `teyavet` namespace and K8s secrets
+3. Applies the ConfigMap with the live `RDS_HOST` (queried from AWS)
+4. Runs the DB migration job (`schema.sql` + `seed_data.sql`)
+5. Applies Services and Ingress (triggers ALB provisioning)
+6. Waits for the ALB hostname, re-applies ConfigMap with live `CORS_ORIGINS`
+7. Deploys backend + frontend (2 replicas each), waits for rollout
+8. Prints the app URL
 
-Your app is now live at the printed URL. No re-run needed.
+Your app is live at the printed URL. No re-run or secret update needed.
 
 ---
 
