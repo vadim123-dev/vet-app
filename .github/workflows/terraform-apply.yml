@@ -61,17 +61,33 @@ jobs:
           terraform init \
             -backend-config="bucket=teyavet-terraform-state-${ACCOUNT_ID}"
 
-      - name: Infra — import existing resources
-        working-directory: infra
+      - name: Infra — delete orphaned RDS resources
         run: |
-          # RDS subnet group and parameter group may survive a partial destroy.
-          # Import them so apply sees no diff instead of failing with AlreadyExists.
-          terraform import -var="db_password=${{ secrets.DB_PASSWORD }}" \
-            aws_db_subnet_group.main teyavet-db-subnet-group 2>/dev/null || true
-          terraform import -var="db_password=${{ secrets.DB_PASSWORD }}" \
-            aws_db_parameter_group.mysql8 teyavet-mysql8 2>/dev/null || true
-          terraform import -var="db_password=${{ secrets.DB_PASSWORD }}" \
-            aws_db_instance.mysql teyavet-mysql 2>/dev/null || true
+          # A DB subnet group cannot be moved to a different VPC.
+          # If a previous run left orphaned RDS resources tied to an old/deleted VPC,
+          # delete them now so Terraform can create fresh ones against the new VPC.
+          # All three commands are no-ops if the resource doesn't exist.
+
+          # Must delete the instance first; subnet group deletion fails if an instance uses it.
+          if aws rds describe-db-instances \
+               --db-instance-identifier teyavet-mysql \
+               --query 'DBInstances[0].DBInstanceIdentifier' \
+               --output text 2>/dev/null | grep -q teyavet-mysql; then
+            echo "Deleting RDS instance teyavet-mysql..."
+            aws rds delete-db-instance \
+              --db-instance-identifier teyavet-mysql \
+              --skip-final-snapshot \
+              --delete-automated-backups
+            echo "Waiting for deletion (up to 15 min)..."
+            aws rds wait db-instance-deleted --db-instance-identifier teyavet-mysql
+            echo "RDS instance deleted."
+          fi
+
+          aws rds delete-db-subnet-group \
+            --db-subnet-group-name teyavet-db-subnet-group 2>/dev/null || true
+
+          aws rds delete-db-parameter-group \
+            --db-parameter-group-name teyavet-mysql8 2>/dev/null || true
 
       - name: Infra — apply
         working-directory: infra
