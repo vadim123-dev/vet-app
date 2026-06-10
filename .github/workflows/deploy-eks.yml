@@ -65,9 +65,14 @@ jobs:
 
       - name: Apply / update ConfigMap
         env:
-          RDS_HOST: ${{ secrets.RDS_HOST }}
           ALB_DNS: ${{ secrets.ALB_DNS }}
-        run: envsubst < k8s/backend/configmap.yaml | kubectl apply -f -
+        run: |
+          RDS_HOST=$(aws rds describe-db-instances \
+            --db-instance-identifier teyavet-mysql \
+            --query 'DBInstances[0].Endpoint.Address' \
+            --output text)
+          export RDS_HOST
+          envsubst < k8s/backend/configmap.yaml | kubectl apply -f -
 
       - name: Create ConfigMap with SQL migration files
         run: |
