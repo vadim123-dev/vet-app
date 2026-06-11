@@ -1,0 +1,596 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TeyaVet — DevSecOps Final Project</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0d1117;
+    --surface: #161b22;
+    --border: #30363d;
+    --accent: #58a6ff;
+    --accent2: #3fb950;
+    --accent3: #f78166;
+    --accent4: #d2a8ff;
+    --text: #e6edf3;
+    --muted: #8b949e;
+    --tag-bg: #1f2937;
+  }
+
+  html, body {
+    width: 100%; height: 100%;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    overflow: hidden;
+  }
+
+  .deck {
+    width: 100%; height: 100%;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+  }
+
+  .slide {
+    display: none;
+    width: min(1200px, 95vw);
+    min-height: 600px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 52px 60px;
+    flex-direction: column;
+    gap: 28px;
+    position: relative;
+  }
+
+  .slide.active { display: flex; }
+
+  /* ── header ── */
+  .slide-label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    color: var(--muted);
+    font-weight: 600;
+  }
+  .slide-title {
+    font-size: 2.1rem;
+    font-weight: 700;
+    line-height: 1.15;
+    color: var(--text);
+  }
+  .slide-title span { color: var(--accent); }
+
+  .divider {
+    height: 2px;
+    background: linear-gradient(90deg, var(--accent) 0%, var(--accent4) 50%, transparent 100%);
+    border: none;
+    border-radius: 2px;
+  }
+
+  /* ── two-column layout ── */
+  .cols { display: grid; gap: 32px; flex: 1; }
+  .cols-2 { grid-template-columns: 1fr 1fr; }
+  .cols-3 { grid-template-columns: 1fr 1fr 1fr; }
+
+  /* ── card ── */
+  .card {
+    background: var(--tag-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 20px 22px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .card-title {
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    font-weight: 700;
+    color: var(--muted);
+  }
+
+  /* ── lists ── */
+  ul { list-style: none; display: flex; flex-direction: column; gap: 8px; }
+  ul li {
+    font-size: 0.92rem;
+    line-height: 1.5;
+    padding-left: 18px;
+    position: relative;
+    color: var(--text);
+  }
+  ul li::before {
+    content: '›';
+    position: absolute; left: 0;
+    color: var(--accent);
+    font-weight: 700;
+  }
+  ul li strong { color: var(--accent); }
+  ul li .green { color: var(--accent2); font-weight: 600; }
+  ul li .red   { color: var(--accent3); font-weight: 600; }
+  ul li .purple{ color: var(--accent4); font-weight: 600; }
+
+  /* ── tags / chips ── */
+  .tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+  .tag {
+    font-size: 0.72rem;
+    font-weight: 600;
+    padding: 3px 9px;
+    border-radius: 20px;
+    border: 1px solid;
+    white-space: nowrap;
+  }
+  .tag.blue   { color: var(--accent);  border-color: var(--accent);  background: rgba(88,166,255,.08); }
+  .tag.green  { color: var(--accent2); border-color: var(--accent2); background: rgba(63,185,80,.08); }
+  .tag.red    { color: var(--accent3); border-color: var(--accent3); background: rgba(247,129,102,.08); }
+  .tag.purple { color: var(--accent4); border-color: var(--accent4); background: rgba(210,168,255,.08); }
+
+  /* ── hero intro (slide 1) ── */
+  .intro-row {
+    display: flex; align-items: flex-start; gap: 48px;
+  }
+  .intro-left { flex: 0 0 auto; }
+  .intro-right { flex: 1; }
+  .name-block {
+    background: linear-gradient(135deg, #1f2937, #161b22);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 24px 32px;
+    text-align: center;
+    min-width: 200px;
+  }
+  .name-block .avatar {
+    width: 64px; height: 64px; border-radius: 50%;
+    background: linear-gradient(135deg, var(--accent), var(--accent4));
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.6rem; font-weight: 700;
+    margin: 0 auto 12px;
+    color: #fff;
+  }
+  .name-block .name  { font-size: 1.05rem; font-weight: 700; color: var(--text); }
+  .name-block .role  { font-size: 0.78rem; color: var(--muted); margin-top: 4px; }
+  .name-block .course { font-size: 0.72rem; color: var(--accent); margin-top: 8px; font-weight: 600; letter-spacing: 0.5px; }
+
+  /* ── pipeline flow ── */
+  .flow {
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    margin-top: 6px;
+  }
+  .flow-step {
+    background: var(--tag-bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 5px 12px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  .flow-step.blue   { border-color: var(--accent);  color: var(--accent); }
+  .flow-step.green  { border-color: var(--accent2); color: var(--accent2); }
+  .flow-step.red    { border-color: var(--accent3); color: var(--accent3); }
+  .flow-step.purple { border-color: var(--accent4); color: var(--accent4); }
+  .arrow { color: var(--muted); font-size: 1.1rem; }
+
+  /* ── slide counter ── */
+  .counter {
+    position: absolute; bottom: 20px; right: 28px;
+    font-size: 0.75rem; color: var(--muted);
+    font-weight: 600; letter-spacing: 1px;
+  }
+
+  /* ── nav hint ── */
+  .nav-hint {
+    margin-top: 18px;
+    font-size: 0.72rem;
+    color: var(--muted);
+    text-align: center;
+    letter-spacing: 0.5px;
+  }
+
+  /* ── progress bar ── */
+  .progress {
+    width: min(1200px, 95vw);
+    height: 3px;
+    background: var(--border);
+    border-radius: 2px;
+    margin-top: 14px;
+    overflow: hidden;
+  }
+  .progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent), var(--accent4));
+    border-radius: 2px;
+    transition: width 0.3s ease;
+  }
+
+  code {
+    font-family: 'SF Mono', Consolas, monospace;
+    font-size: 0.82em;
+    background: rgba(88,166,255,.1);
+    color: var(--accent);
+    padding: 1px 5px;
+    border-radius: 4px;
+  }
+</style>
+</head>
+<body>
+
+<div class="deck">
+
+  <!-- ─── SLIDE 1: Introduction ─── -->
+  <div class="slide active" id="slide-1">
+    <div class="slide-label">DevSecOps — Final Project</div>
+    <div class="slide-title"><span>TeyaVet</span> — Vet Clinic Management System</div>
+    <hr class="divider">
+
+    <div class="intro-row">
+      <div class="intro-left">
+        <div class="name-block">
+          <div class="avatar">AM</div>
+          <div class="name">Assaf Mashal</div>
+          <div class="role">Full-Stack &amp; Cloud Engineer</div>
+          <div class="course">DevSecOps Course — Final Project</div>
+        </div>
+      </div>
+
+      <div class="intro-right">
+        <div class="cols cols-2">
+          <div class="card">
+            <div class="card-title">What is TeyaVet?</div>
+            <ul>
+              <li>Vet clinic staff portal</li>
+              <li>Manage <strong>pet owners</strong>, patients &amp; appointments</li>
+              <li>Scheduling with conflict detection</li>
+              <li>Medical records &amp; measurements</li>
+            </ul>
+          </div>
+          <div class="card">
+            <div class="card-title">Tech Stack</div>
+            <ul>
+              <li><strong>Backend</strong> — Python 3.13 · Flask · JWT</li>
+              <li><strong>Frontend</strong> — React 18 · Vite · plain CSS</li>
+              <li><strong>Database</strong> — MySQL 8 (InnoDB)</li>
+              <li><strong>Infra</strong> — Docker → Kubernetes on AWS</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Architecture — Dev vs Production</div>
+      <div style="display:flex; gap:40px; margin-top:4px;">
+        <div style="flex:1">
+          <div style="font-size:0.78rem; color:var(--muted); font-weight:600; margin-bottom:8px;">LOCAL / DEV</div>
+          <div class="flow">
+            <div class="flow-step blue">docker compose up</div>
+            <div class="arrow">→</div>
+            <div class="flow-step blue">MySQL 8</div>
+            <div class="arrow">+</div>
+            <div class="flow-step blue">Flask API :5000</div>
+            <div class="arrow">+</div>
+            <div class="flow-step blue">React :5173</div>
+          </div>
+        </div>
+        <div style="flex:1">
+          <div style="font-size:0.78rem; color:var(--muted); font-weight:600; margin-bottom:8px;">PRODUCTION (AWS)</div>
+          <div class="flow">
+            <div class="flow-step green">ALB</div>
+            <div class="arrow">→</div>
+            <div class="flow-step green">EKS pods</div>
+            <div class="arrow">+</div>
+            <div class="flow-step green">RDS MySQL</div>
+            <div class="arrow">·</div>
+            <div class="flow-step green">ECR images</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="counter">1 / 4</div>
+  </div>
+
+  <!-- ─── SLIDE 2: Infrastructure ─── -->
+  <div class="slide" id="slide-2">
+    <div class="slide-label">Infrastructure &amp; Hosting</div>
+    <div class="slide-title">What Runs Where — <span>AWS Architecture</span></div>
+    <hr class="divider">
+
+    <div class="cols cols-2">
+      <div style="display:flex; flex-direction:column; gap:16px;">
+
+        <div class="card">
+          <div class="card-title">AWS Resources (Terraform IaC)</div>
+          <ul>
+            <li><strong>VPC</strong> — 2 public + 2 private subnets, multi-AZ</li>
+            <li><strong>EKS 1.31</strong> — managed node group (t3.medium, private subnets)</li>
+            <li><strong>RDS MySQL 8</strong> — private subnet only, no public access</li>
+            <li><strong>ECR</strong> — 2 repos (backend + frontend), image scanning</li>
+            <li><strong>ALB</strong> — provisioned by AWS Load Balancer Controller (Helm)</li>
+          </ul>
+          <div class="tags" style="margin-top:8px;">
+            <span class="tag blue">Terraform</span>
+            <span class="tag green">S3 remote state</span>
+            <span class="tag green">DynamoDB lock</span>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">Where Are Docker Images Built?</div>
+          <div class="flow" style="margin-bottom:8px;">
+            <div class="flow-step purple">push to master</div>
+            <div class="arrow">→</div>
+            <div class="flow-step blue">GitHub Actions runner</div>
+            <div class="arrow">→</div>
+            <div class="flow-step green">AWS ECR</div>
+          </div>
+          <ul>
+            <li>3 images: <code>backend</code> · <code>frontend</code> · <code>db</code></li>
+            <li>Frontend: multi-stage (Node build → Nginx serve)</li>
+            <li>Backend: non-root <code>appuser</code> for least privilege</li>
+            <li>ECR lifecycle: keep last 10 tags, expire untagged after 1 day</li>
+          </ul>
+        </div>
+
+      </div>
+
+      <div style="display:flex; flex-direction:column; gap:16px;">
+
+        <div class="card">
+          <div class="card-title">Responsible Hosting — Security Controls</div>
+          <ul>
+            <li><span class="green">No static AWS keys</span> — GitHub OIDC → STS short-lived tokens</li>
+            <li><span class="green">RDS in private subnet</span> — unreachable from internet</li>
+            <li><span class="green">ECR image scanning</span> on every push</li>
+            <li><span class="green">Non-root containers</span> — Flask runs as <code>appuser</code></li>
+            <li><span class="green">Secrets in GitHub Secrets</span> — injected at runtime, never in code</li>
+            <li>Security groups: RDS only accepts MySQL from EKS nodes</li>
+          </ul>
+        </div>
+
+        <div class="card">
+          <div class="card-title">IaC Workflow</div>
+          <div class="flow" style="flex-wrap:wrap;">
+            <div class="flow-step blue">Bootstrap</div>
+            <div class="arrow">→</div>
+            <div class="flow-step blue">S3 + DynamoDB state</div>
+            <div class="arrow">→</div>
+            <div class="flow-step purple">terraform-apply.yml</div>
+            <div class="arrow">→</div>
+            <div class="flow-step green">VPC / EKS / RDS / ECR</div>
+          </div>
+          <ul style="margin-top:10px;">
+            <li>Manual dispatch workflow — intentional gate before infra changes</li>
+            <li><code>prevent_destroy</code> on GitHub OIDC provider</li>
+            <li><code>destroy.sh</code> script for full teardown with safeguards</li>
+          </ul>
+        </div>
+
+      </div>
+    </div>
+
+    <div class="counter">2 / 4</div>
+  </div>
+
+  <!-- ─── SLIDE 3: DevSecOps Workflow ─── -->
+  <div class="slide" id="slide-3">
+    <div class="slide-label">CI/CD &amp; Security</div>
+    <div class="slide-title"><span>DevSecOps Workflow</span> — Git, Pipelines &amp; EKS Deploy</div>
+    <hr class="divider">
+
+    <div class="cols cols-3" style="flex:0 0 auto;">
+
+      <div class="card" style="gap:7px;">
+        <div class="card-title">Git Branch Strategy</div>
+        <ul>
+          <li><strong>master</strong> = production (trunk-based)</li>
+          <li>Feature branches by prefix:</li>
+        </ul>
+        <div class="tags" style="margin-top:6px;">
+          <span class="tag blue">feat/</span>
+          <span class="tag green">ci/</span>
+          <span class="tag red">fix/</span>
+          <span class="tag purple">infra/</span>
+          <span class="tag red">security/</span>
+        </div>
+        <ul style="margin-top:6px;">
+          <li>All changes: <strong>PR → checks → merge</strong></li>
+          <li>No direct push to master</li>
+        </ul>
+      </div>
+
+      <div class="card" style="gap:7px;">
+        <div class="card-title">PR Gate — <code>pr-checks.yml</code></div>
+        <ul>
+          <li><span class="green">Lint</span> — ESLint · ruff</li>
+          <li><span class="green">SCA</span> — npm audit <code>--audit-level=high</code></li>
+          <li><span class="green">SCA</span> — pip-audit (Python deps)</li>
+          <li><span class="green">Unit tests</span> — pytest</li>
+          <li>Vite build must succeed</li>
+          <li>Triggers on PR open / sync / reopen</li>
+        </ul>
+      </div>
+
+      <div class="card" style="gap:7px;">
+        <div class="card-title">CI/CD — <code>cd.yml</code> (push to master)</div>
+        <div class="flow" style="flex-direction:column; align-items:flex-start; gap:4px;">
+          <div class="flow-step purple" style="font-size:0.72rem;">push to master</div>
+          <div class="arrow" style="padding-left:8px; font-size:0.85rem;">↓</div>
+          <div class="flow-step blue" style="font-size:0.72rem;">Build 3 Docker images</div>
+          <div class="arrow" style="padding-left:8px; font-size:0.85rem;">↓</div>
+          <div class="flow-step blue" style="font-size:0.72rem;">Containers → integration tests</div>
+          <div class="arrow" style="padding-left:8px; font-size:0.85rem;">↓</div>
+          <div class="flow-step red" style="font-size:0.72rem;">Trivy scan — block on CRITICAL</div>
+          <div class="arrow" style="padding-left:8px; font-size:0.85rem;">↓</div>
+          <div class="flow-step green" style="font-size:0.72rem;">Push to AWS ECR (OIDC)</div>
+        </div>
+      </div>
+
+    </div>
+
+    <div class="card" style="margin-top:0;">
+      <div class="card-title">EKS Deploy — <code>deploy-eks.yml</code> &nbsp;·&nbsp; <span style="color:var(--accent3); font-weight:600;">manual workflow_dispatch</span> &nbsp;·&nbsp; <span style="color:var(--accent4); font-weight:600;">environment: production (reviewer approval gate)</span></div>
+      <div style="display:flex; gap:32px; margin-top:6px;">
+        <div style="flex:1;">
+          <div class="flow" style="flex-wrap:wrap; gap:5px;">
+            <div class="flow-step blue" style="font-size:0.72rem;">image_tag input</div>
+            <div class="arrow">→</div>
+            <div class="flow-step blue" style="font-size:0.72rem;">OIDC → kubeconfig</div>
+            <div class="arrow">→</div>
+            <div class="flow-step purple" style="font-size:0.72rem;">Helm: AWS LBC</div>
+            <div class="arrow">→</div>
+            <div class="flow-step red" style="font-size:0.72rem;">K8s Secret from GitHub Secrets</div>
+            <div class="arrow">→</div>
+            <div class="flow-step blue" style="font-size:0.72rem;">DB migration job</div>
+            <div class="arrow">→</div>
+            <div class="flow-step blue" style="font-size:0.72rem;">Apply Services + Ingress</div>
+            <div class="arrow">→</div>
+            <div class="flow-step green" style="font-size:0.72rem;">Deploy backend + frontend</div>
+            <div class="arrow">→</div>
+            <div class="flow-step green" style="font-size:0.72rem;">Wait rollout status</div>
+          </div>
+        </div>
+        <div style="flex:0 0 auto; display:flex; flex-direction:column; gap:4px; justify-content:center; border-left:1px solid var(--border); padding-left:24px;">
+          <div style="font-size:0.78rem; color:var(--accent2); font-weight:600;">Security highlights</div>
+          <div style="font-size:0.78rem; color:var(--text);">› Secrets injected at runtime — never baked into image or git</div>
+          <div style="font-size:0.78rem; color:var(--text);">› OIDC: no <code>AWS_ACCESS_KEY_ID</code> stored anywhere</div>
+          <div style="font-size:0.78rem; color:var(--text);">› Parameterized image tag — controlled versioning</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="counter">3 / 4</div>
+  </div>
+
+  <!-- ─── SLIDE 4: EKS Architecture ─── -->
+  <div class="slide" id="slide-4">
+    <div class="slide-label">Kubernetes — Cluster Internals</div>
+    <div class="slide-title">EKS Architecture — <span>Pods, Networking &amp; Permissions</span></div>
+    <hr class="divider">
+
+    <div class="cols cols-3" style="flex:1;">
+
+      <!-- col 1: networking / routing -->
+      <div style="display:flex; flex-direction:column; gap:10px;">
+        <div class="card" style="gap:7px;">
+          <div class="card-title">Traffic Routing</div>
+          <ul>
+            <li><strong>ALB</strong> — internet-facing, HTTP :80</li>
+            <li>Path rules in <code>teyavet-ingress</code>:</li>
+          </ul>
+          <div style="margin-top:4px; font-size:0.8rem; line-height:1.8; padding-left:10px; color:var(--text);">
+            <div><code style="color:var(--accent);">/users /pets /appointments …</code></div>
+            <div style="padding-left:10px; color:var(--muted);">→ <span style="color:var(--accent2);">backend-service :5000</span></div>
+            <div><code style="color:var(--accent);">/</code> (catch-all)</div>
+            <div style="padding-left:10px; color:var(--muted);">→ <span style="color:var(--accent2);">frontend-service :80</span></div>
+          </div>
+          <div class="tags" style="margin-top:4px;">
+            <span class="tag green">ClusterIP services</span>
+            <span class="tag blue">target-type: ip</span>
+          </div>
+        </div>
+
+        <div class="card" style="gap:7px;">
+          <div class="card-title">AWS Load Balancer Controller</div>
+          <ul>
+            <li>Runs in <code>kube-system</code> namespace</li>
+            <li>Installed via <strong>Helm</strong> on every deploy</li>
+            <li>Watches <code>Ingress</code> objects → provisions ALB</li>
+            <li>IRSA: own IAM role scoped to ALB/EC2 APIs only</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- col 2: pods & config -->
+      <div style="display:flex; flex-direction:column; gap:10px;">
+        <div class="card" style="gap:7px;">
+          <div class="card-title">backend — <span style="color:var(--accent);">2 replicas</span> (Flask :5000)</div>
+          <ul>
+            <li>Image from <strong>ECR</strong> — tag injected at deploy time</li>
+            <li>Security: <span class="green">runAsUser=1000</span>, <span class="green">allowPrivilegeEscalation=false</span></li>
+            <li>Resources: 250m CPU / 256Mi → 500m / 512Mi</li>
+            <li>Liveness + readiness probes on <code>/health</code></li>
+            <li>Rolling update: <span class="green">maxUnavailable=0</span> (zero-downtime)</li>
+          </ul>
+        </div>
+
+        <div class="card" style="gap:7px;">
+          <div class="card-title">frontend — <span style="color:var(--accent);">2 replicas</span> (Nginx :80)</div>
+          <ul>
+            <li>Multi-stage image: Node build → Nginx static serve</li>
+            <li>No secrets needed — pure static SPA</li>
+            <li>Resources: 100m / 64Mi → 200m / 128Mi</li>
+          </ul>
+        </div>
+
+        <div class="card" style="gap:7px;">
+          <div class="card-title">Config &amp; Secrets</div>
+          <ul>
+            <li><strong>ConfigMap</strong> <code>backend-config</code> — DB_HOST, CORS_ORIGINS, FLASK_APP (non-sensitive)</li>
+            <li><strong>Secret</strong> <code>backend-secrets</code> — DB_PASSWORD, JWT_SECRET_KEY</li>
+            <li>DB migration job runs <code>schema.sql</code> + <code>seed_data.sql</code> before pods start</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- col 3: IAM / permissions -->
+      <div style="display:flex; flex-direction:column; gap:10px;">
+        <div class="card" style="gap:7px;">
+          <div class="card-title">IAM Roles &amp; Permissions</div>
+          <ul>
+            <li><span class="purple">EKS Node Role</span> → <code>AmazonEC2ContainerRegistryReadOnly</code> — nodes pull ECR images (no imagePullSecrets needed)</li>
+            <li><span class="purple">LBC Role (IRSA)</span> → create/manage ALBs, target groups — scoped to ELB + EC2 APIs</li>
+            <li><span class="purple">GitHub OIDC Role</span> → <code>AdministratorAccess</code> — used by CI/CD to deploy, push to ECR, manage infra</li>
+            <li><span class="purple">EKS Cluster Role</span> → <code>AmazonEKSClusterPolicy</code></li>
+          </ul>
+        </div>
+
+        <div class="card" style="gap:7px;">
+          <div class="card-title">Security Summary</div>
+          <ul>
+            <li><span class="green">No imagePullSecrets</span> — node IAM role handles ECR auth transparently</li>
+            <li><span class="green">IRSA</span> — LBC pod gets its own scoped role via service account annotation, not node role</li>
+            <li><span class="green">K8s Secrets</span> — sensitive values never in ConfigMap or image</li>
+            <li><span class="green">Non-root pods</span> — backend enforces runAsNonRoot</li>
+            <li><span class="green">RDS unreachable</span> — private subnet, SG allows only EKS node IPs</li>
+          </ul>
+        </div>
+      </div>
+
+    </div>
+
+    <div class="counter">4 / 4</div>
+  </div>
+
+  <div class="progress"><div class="progress-fill" id="progress" style="width:25%"></div></div>
+  <div class="nav-hint">← → arrow keys to navigate &nbsp;·&nbsp; click anywhere on slide to advance</div>
+</div>
+
+<script>
+  const slides = document.querySelectorAll('.slide');
+  const progress = document.getElementById('progress');
+  let current = 0;
+
+  function show(n) {
+    slides[current].classList.remove('active');
+    current = (n + slides.length) % slides.length;
+    slides[current].classList.add('active');
+    progress.style.width = ((current + 1) / slides.length * 100) + '%';
+  }
+
+  document.addEventListener('keydown', e => {
+    if (e.key === 'ArrowRight' || e.key === 'ArrowDown' || e.key === ' ') show(current + 1);
+    if (e.key === 'ArrowLeft'  || e.key === 'ArrowUp')                     show(current - 1);
+  });
+
+  document.querySelector('.deck').addEventListener('click', e => {
+    if (!e.target.closest('a')) show(current + 1);
+  });
+</script>
+</body>
+</html>

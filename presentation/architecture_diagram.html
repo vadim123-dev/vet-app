@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>TeyaVet — Architecture</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background: #0d1117;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 32px;
+}
+h1 { color: #58a6ff; font-size: 1.2rem; margin-bottom: 4px; letter-spacing: 0.5px; }
+p  { color: #8b949e; font-size: 0.75rem; margin-bottom: 28px; text-transform: uppercase; letter-spacing: 1px; }
+svg { max-width: 1140px; width: 100%; height: auto; }
+</style>
+</head>
+<body>
+<h1>TeyaVet — System Architecture &amp; CI/CD Flow</h1>
+<p>High-level overview</p>
+
+<svg viewBox="0 0 1140 640" xmlns="http://www.w3.org/2000/svg"
+     font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif">
+  <defs>
+    <marker id="a-blue"   markerWidth="9" markerHeight="7" refX="8" refY="3.5" orient="auto"><polygon points="0 0,9 3.5,0 7" fill="#58a6ff"/></marker>
+    <marker id="a-green"  markerWidth="9" markerHeight="7" refX="8" refY="3.5" orient="auto"><polygon points="0 0,9 3.5,0 7" fill="#3fb950"/></marker>
+    <marker id="a-orange" markerWidth="9" markerHeight="7" refX="8" refY="3.5" orient="auto"><polygon points="0 0,9 3.5,0 7" fill="#f78166"/></marker>
+    <marker id="a-purple" markerWidth="9" markerHeight="7" refX="8" refY="3.5" orient="auto"><polygon points="0 0,9 3.5,0 7" fill="#d2a8ff"/></marker>
+    <marker id="a-muted"  markerWidth="9" markerHeight="7" refX="8" refY="3.5" orient="auto"><polygon points="0 0,9 3.5,0 7" fill="#8b949e"/></marker>
+  </defs>
+
+  <!-- ═══════ REGION: GitHub Actions ═══════ -->
+  <rect x="258" y="28" width="460" height="570" rx="14" fill="none" stroke="#30363d" stroke-width="1.5" stroke-dasharray="6,4"/>
+  <text x="488" y="20" text-anchor="middle" font-size="10" font-weight="700" fill="#8b949e" letter-spacing="1.5">GITHUB ACTIONS</text>
+
+  <!-- ═══════ REGION: AWS ═══════ -->
+  <rect x="758" y="28" width="368" height="570" rx="14" fill="none" stroke="#30363d" stroke-width="1.5" stroke-dasharray="6,4"/>
+  <text x="942" y="20" text-anchor="middle" font-size="10" font-weight="700" fill="#8b949e" letter-spacing="1.5">AWS</text>
+
+  <!-- EKS sub-region -->
+  <rect x="772" y="220" width="340" height="350" rx="10" fill="none" stroke="#3fb950" stroke-width="1" stroke-dasharray="4,3"/>
+  <text x="942" y="213" text-anchor="middle" font-size="9" font-weight="700" fill="#3fb950" letter-spacing="0.5">EKS CLUSTER — teyavet-prod</text>
+
+  <!-- ═══════ NODE: Developer ═══════ -->
+  <rect x="22" y="100" width="190" height="72" rx="10" fill="#161b22" stroke="#58a6ff" stroke-width="2"/>
+  <text x="117" y="132" text-anchor="middle" font-size="14" font-weight="700" fill="#58a6ff">Developer</text>
+  <text x="117" y="153" text-anchor="middle" font-size="11" fill="#8b949e">git push / open PR</text>
+
+  <!-- ═══════ NODES: GitHub Actions ═══════ -->
+
+  <!-- PR Checks -->
+  <rect x="276" y="50" width="200" height="88" rx="10" fill="#161b22" stroke="#d2a8ff" stroke-width="1.5"/>
+  <text x="376" y="76" text-anchor="middle" font-size="13" font-weight="700" fill="#d2a8ff">PR Checks</text>
+  <text x="376" y="95" text-anchor="middle" font-size="10" fill="#8b949e">lint · SCA (npm audit</text>
+  <text x="376" y="111" text-anchor="middle" font-size="10" fill="#8b949e">pip-audit) · unit tests</text>
+  <text x="376" y="126" text-anchor="middle" font-size="9" fill="#d2a8ff">pr-checks.yml</text>
+
+  <!-- CD Pipeline -->
+  <rect x="276" y="188" width="200" height="118" rx="10" fill="#161b22" stroke="#3fb950" stroke-width="1.5"/>
+  <text x="376" y="213" text-anchor="middle" font-size="13" font-weight="700" fill="#3fb950">CD Pipeline</text>
+  <text x="376" y="232" text-anchor="middle" font-size="10" fill="#8b949e">build images</text>
+  <text x="376" y="250" text-anchor="middle" font-size="10" fill="#f78166">Trivy scan (block CRITICAL)</text>
+  <text x="376" y="268" text-anchor="middle" font-size="10" fill="#8b949e">push to ECR</text>
+  <text x="376" y="286" text-anchor="middle" font-size="9" fill="#3fb950">cd.yml · push to master</text>
+  <text x="376" y="300" text-anchor="middle" font-size="9" fill="#8b949e">integration tests</text>
+
+  <!-- Deploy to EKS -->
+  <rect x="276" y="358" width="200" height="72" rx="10" fill="#161b22" stroke="#f78166" stroke-width="1.5"/>
+  <text x="376" y="384" text-anchor="middle" font-size="13" font-weight="700" fill="#f78166">Deploy to EKS</text>
+  <text x="376" y="403" text-anchor="middle" font-size="10" fill="#8b949e">kubectl apply · Helm · secrets</text>
+  <text x="376" y="420" text-anchor="middle" font-size="9" fill="#f78166">deploy-eks.yml · manual</text>
+
+  <!-- Terraform Apply -->
+  <rect x="496" y="188" width="200" height="118" rx="10" fill="#161b22" stroke="#58a6ff" stroke-width="1.5"/>
+  <text x="596" y="213" text-anchor="middle" font-size="13" font-weight="700" fill="#58a6ff">Terraform Apply</text>
+  <text x="596" y="235" text-anchor="middle" font-size="10" fill="#8b949e">VPC · EKS · RDS</text>
+  <text x="596" y="253" text-anchor="middle" font-size="10" fill="#8b949e">ECR · IAM · SGs</text>
+  <text x="596" y="271" text-anchor="middle" font-size="10" fill="#8b949e">S3 state · DynamoDB lock</text>
+  <text x="596" y="291" text-anchor="middle" font-size="9" fill="#58a6ff">terraform-apply.yml · manual</text>
+  <text x="596" y="305" text-anchor="middle" font-size="9" fill="#8b949e">provisions infra once</text>
+
+  <!-- ═══════ NODES: AWS ═══════ -->
+
+  <!-- ECR -->
+  <rect x="776" y="50" width="296" height="72" rx="10" fill="#161b22" stroke="#3fb950" stroke-width="2"/>
+  <text x="924" y="82" text-anchor="middle" font-size="14" font-weight="700" fill="#3fb950">ECR</text>
+  <text x="924" y="101" text-anchor="middle" font-size="10" fill="#8b949e">backend + frontend images · scanning on push</text>
+  <text x="924" y="116" text-anchor="middle" font-size="9" fill="#3fb950">private · IAM-gated</text>
+
+  <!-- GitHub OIDC -->
+  <rect x="776" y="148" width="296" height="52" rx="10" fill="#161b22" stroke="#d2a8ff" stroke-width="1.5"/>
+  <text x="924" y="172" text-anchor="middle" font-size="13" font-weight="700" fill="#d2a8ff">GitHub OIDC → IAM Role</text>
+  <text x="924" y="190" text-anchor="middle" font-size="10" fill="#8b949e">short-lived creds · no static keys · used by all workflows</text>
+
+  <!-- ALB -->
+  <rect x="784" y="240" width="304" height="58" rx="10" fill="#161b22" stroke="#3fb950" stroke-width="2"/>
+  <text x="936" y="266" text-anchor="middle" font-size="13" font-weight="700" fill="#3fb950">ALB</text>
+  <text x="936" y="285" text-anchor="middle" font-size="10" fill="#8b949e">internet-facing · path routing</text>
+
+  <!-- Frontend pods -->
+  <rect x="784" y="340" width="136" height="60" rx="10" fill="#161b22" stroke="#d2a8ff" stroke-width="1.5"/>
+  <text x="852" y="366" text-anchor="middle" font-size="12" font-weight="700" fill="#d2a8ff">Frontend ×2</text>
+  <text x="852" y="384" text-anchor="middle" font-size="10" fill="#8b949e">Nginx · React SPA</text>
+
+  <!-- Backend pods -->
+  <rect x="952" y="340" width="136" height="60" rx="10" fill="#161b22" stroke="#d2a8ff" stroke-width="1.5"/>
+  <text x="1020" y="366" text-anchor="middle" font-size="12" font-weight="700" fill="#d2a8ff">Backend ×2</text>
+  <text x="1020" y="384" text-anchor="middle" font-size="10" fill="#8b949e">Flask API · non-root</text>
+
+  <!-- RDS -->
+  <rect x="868" y="450" width="220" height="70" rx="10" fill="#161b22" stroke="#f78166" stroke-width="1.5"/>
+  <text x="978" y="480" text-anchor="middle" font-size="13" font-weight="700" fill="#f78166">RDS MySQL 8</text>
+  <text x="978" y="499" text-anchor="middle" font-size="10" fill="#8b949e">private subnet · only from EKS</text>
+  <text x="978" y="514" text-anchor="middle" font-size="9" fill="#8b949e">no public access</text>
+
+  <!-- ═══════ ARROWS ═══════ -->
+
+  <!-- Dev → PR Checks -->
+  <line x1="212" y1="120" x2="272" y2="90" stroke="#d2a8ff" stroke-width="2" marker-end="url(#a-purple)"/>
+  <text x="218" y="100" font-size="10" fill="#d2a8ff">PR</text>
+
+  <!-- Dev → CD (merge) -->
+  <line x1="212" y1="148" x2="272" y2="240" stroke="#3fb950" stroke-width="2" marker-end="url(#a-green)"/>
+  <text x="214" y="200" font-size="10" fill="#3fb950">merge</text>
+
+  <!-- Dev → Deploy (manual, dashed down-left) -->
+  <line x1="117" y1="172" x2="117" y2="394" stroke="#f78166" stroke-width="1.5" stroke-dasharray="5,3"/>
+  <line x1="117" y1="394" x2="272" y2="394" stroke="#f78166" stroke-width="1.5" stroke-dasharray="5,3" marker-end="url(#a-orange)"/>
+  <text x="30" y="310" font-size="10" fill="#f78166">manual</text>
+
+  <!-- Dev → Terraform (manual, dashed) -->
+  <line x1="212" y1="136" x2="490" y2="248" stroke="#58a6ff" stroke-width="1.5" stroke-dasharray="5,3" marker-end="url(#a-blue)"/>
+  <text x="330" y="172" font-size="10" fill="#58a6ff">manual</text>
+
+  <!-- CD → ECR -->
+  <line x1="476" y1="228" x2="772" y2="85" stroke="#3fb950" stroke-width="2" marker-end="url(#a-green)"/>
+  <text x="596" y="138" font-size="10" fill="#3fb950">docker push</text>
+
+  <!-- ECR → pods (image pull, dashed) -->
+  <line x1="852" y1="122" x2="852" y2="336" stroke="#3fb950" stroke-width="1.5" stroke-dasharray="5,3" marker-end="url(#a-green)"/>
+  <line x1="996" y1="122" x2="1020" y2="336" stroke="#3fb950" stroke-width="1.5" stroke-dasharray="5,3" marker-end="url(#a-green)"/>
+  <text x="1028" y="230" font-size="10" fill="#3fb950">image pull</text>
+
+  <!-- Deploy → EKS ALB -->
+  <line x1="476" y1="394" x2="780" y2="270" stroke="#f78166" stroke-width="1.5" stroke-dasharray="5,3" marker-end="url(#a-orange)"/>
+  <text x="570" y="314" font-size="10" fill="#f78166">kubectl apply</text>
+
+  <!-- Terraform → AWS region (provisions) -->
+  <line x1="696" y1="248" x2="772" y2="200" stroke="#58a6ff" stroke-width="1.5" stroke-dasharray="5,3" marker-end="url(#a-blue)"/>
+  <text x="710" y="218" font-size="10" fill="#58a6ff">provisions</text>
+
+  <!-- ALB → Frontend -->
+  <line x1="880" y1="298" x2="862" y2="336" stroke="#58a6ff" stroke-width="2" marker-end="url(#a-blue)"/>
+
+  <!-- ALB → Backend -->
+  <line x1="992" y1="298" x2="1008" y2="336" stroke="#58a6ff" stroke-width="2" marker-end="url(#a-blue)"/>
+  <text x="930" y="318" font-size="10" fill="#58a6ff">path routing</text>
+
+  <!-- Backend → RDS -->
+  <line x1="1020" y1="400" x2="1000" y2="446" stroke="#f78166" stroke-width="2" marker-end="url(#a-orange)"/>
+  <text x="1026" y="430" font-size="10" fill="#f78166">MySQL</text>
+
+  <!-- OIDC → GitHub Actions (used by all workflows) -->
+  <line x1="772" y1="174" x2="700" y2="248" stroke="#d2a8ff" stroke-width="1.5" stroke-dasharray="4,3" marker-end="url(#a-purple)"/>
+  <text x="700" y="200" font-size="10" fill="#d2a8ff">OIDC</text>
+
+  <!-- ═══════ LEGEND ═══════ -->
+  <line x1="22"  y1="618" x2="52"  y2="618" stroke="#3fb950" stroke-width="2" marker-end="url(#a-green)"/>
+  <text x="58"  y="622" font-size="10" fill="#8b949e">CI/CD flow</text>
+
+  <line x1="160" y1="618" x2="190" y2="618" stroke="#3fb950" stroke-width="1.5" stroke-dasharray="4,3" marker-end="url(#a-green)"/>
+  <text x="196" y="622" font-size="10" fill="#8b949e">image pull</text>
+
+  <line x1="290" y1="618" x2="320" y2="618" stroke="#f78166" stroke-width="1.5" stroke-dasharray="4,3" marker-end="url(#a-orange)"/>
+  <text x="326" y="622" font-size="10" fill="#8b949e">deploy / data</text>
+
+  <line x1="430" y1="618" x2="460" y2="618" stroke="#d2a8ff" stroke-width="1.5" stroke-dasharray="4,3" marker-end="url(#a-purple)"/>
+  <text x="466" y="622" font-size="10" fill="#8b949e">OIDC auth</text>
+
+  <line x1="560" y1="618" x2="590" y2="618" stroke="#58a6ff" stroke-width="2" marker-end="url(#a-blue)"/>
+  <text x="596" y="622" font-size="10" fill="#8b949e">HTTP traffic</text>
+
+  <line x1="680" y1="618" x2="710" y2="618" stroke="#58a6ff" stroke-width="1.5" stroke-dasharray="4,3" marker-end="url(#a-blue)"/>
+  <text x="716" y="622" font-size="10" fill="#8b949e">provisions infra</text>
+</svg>
+</body>
+</html>
