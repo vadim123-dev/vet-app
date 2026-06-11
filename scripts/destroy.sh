@@ -102,9 +102,47 @@ ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
 BACKEND_BUCKET="teyavet-terraform-state-${ACCOUNT_ID}"
 terraform init -backend-config="bucket=${BACKEND_BUCKET}" -reconfigure -input=false 2>&1 | grep -v "^$" | grep -v "Reusing\|Using previously"
 
-# ── Step 6: terraform destroy ─────────────────────────────────────────────────
+# ── Step 6: terraform destroy (preserving GitHub Actions OIDC) ─────────────────
+# This Terraform version has no -exclude flag, and the GitHub OIDC provider +
+# role carry prevent_destroy = true (a blanket destroy errors at plan time and
+# tears down nothing). Workaround: remove them from state so destroy ignores
+# them (they stay live in AWS), destroy everything else, then re-import them so
+# the next terraform-apply sees no diff instead of "EntityAlreadyExists".
+OIDC_PROVIDER_ADDR="aws_iam_openid_connect_provider.github"
+OIDC_ROLE_ADDR="aws_iam_role.github_actions"
+OIDC_ATTACH_ADDR="aws_iam_role_policy_attachment.github_actions_admin"
+OIDC_POLICY_ARN="arn:aws:iam::aws:policy/AdministratorAccess"
+OIDC_PROVIDER_ID="arn:aws:iam::${ACCOUNT_ID}:oidc-provider/token.actions.githubusercontent.com"
+
+# Capture the role name from state BEFORE removing it (needed for re-import).
+OIDC_ROLE_NAME="$(terraform state show "$OIDC_ROLE_ADDR" 2>/dev/null \
+  | awk -F'"' '/^[[:space:]]+name[[:space:]]+=/{print $2; exit}')"
+OIDC_ROLE_NAME="${OIDC_ROLE_NAME:-teyavet-github-actions}"
+
+log "Removing GitHub OIDC resources from state (they remain live in AWS)..."
+terraform state rm "$OIDC_ATTACH_ADDR" "$OIDC_ROLE_ADDR" "$OIDC_PROVIDER_ADDR" \
+  || warn "Some OIDC resources were not in state — continuing"
+
 log "Running terraform destroy..."
 terraform destroy -auto-approve
+
+log "Re-importing GitHub OIDC resources so state stays consistent for next apply..."
+terraform import "$OIDC_PROVIDER_ADDR" "$OIDC_PROVIDER_ID"
+terraform import "$OIDC_ROLE_ADDR" "$OIDC_ROLE_NAME"
+terraform import "$OIDC_ATTACH_ADDR" "${OIDC_ROLE_NAME}/${OIDC_POLICY_ARN}"
+
+# ── Backend preservation guard ────────────────────────────────────────────────
+# We excluded the GitHub OIDC resources above, so they remain in the Terraform
+# state. That state lives in the S3 bucket below — deleting it would orphan the
+# OIDC resources (next apply would fail with "already exists"). So by default we
+# STOP here, preserving the state backend. Set DESTROY_BACKEND=true for a full
+# nuke (only do this if you also intend to remove the OIDC resources).
+if [[ "${DESTROY_BACKEND:-false}" != "true" ]]; then
+  warn "Preserving Terraform state backend (S3 bucket + DynamoDB lock table)."
+  warn "OIDC resources stay tracked in state. Set DESTROY_BACKEND=true to delete the backend too."
+  log "Teardown complete — app infrastructure removed; GitHub OIDC + state backend preserved."
+  exit 0
+fi
 
 # ── Step 7: destroy bootstrap resources (S3 state bucket + DynamoDB lock table)
 # These are created by infra/bootstrap/ which has no remote backend, so we
