@@ -42,3 +42,8 @@ output "public_subnet_ids" {
   description = "Public subnet IDs (ALB)"
   value       = aws_subnet.public[*].id
 }
+
+output "github_actions_role_arn" {
+  description = "IAM role ARN for GitHub Actions OIDC — save as AWS_ROLE_ARN in GitHub Secrets, then delete AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY"
+  value       = aws_iam_role.github_actions.arn
+}
