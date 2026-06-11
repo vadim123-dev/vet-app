@@ -81,3 +81,8 @@ variable "db_password" {
   type        = string
   sensitive   = true
 }
+
+variable "github_repo" {
+  description = "GitHub repo in owner/name format — scopes the OIDC trust policy to this repo only"
+  default     = "vadim123-dev/vet-app"
+}
