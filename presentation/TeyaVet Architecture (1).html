@@ -1,0 +1,603 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TeyaVet — Architecture &amp; CI/CD Flow</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root{
+    --paper:#f7f7f4;
+    --paper2:#fbfbf9;
+    --node:#ffffff;
+    --ink:#16191d;
+    --ink2:#3a3f46;
+    --muted:#7b8089;
+    --line:#e2e3df;
+    --line2:#d4d6d0;
+
+    /* flow / accent hues — shared chroma + lightness, varied hue */
+    --green: oklch(0.55 0.13 152);
+    --blue:  oklch(0.55 0.13 252);
+    --orange:oklch(0.60 0.14 47);
+    --purple:oklch(0.55 0.14 305);
+    --dev:   #51565e;
+
+    --green-soft: oklch(0.95 0.03 152);
+    --blue-soft:  oklch(0.95 0.03 252);
+    --orange-soft:oklch(0.95 0.035 60);
+    --purple-soft:oklch(0.95 0.03 305);
+
+    --shadow: 0 1px 2px rgba(20,25,30,.05), 0 6px 18px -8px rgba(20,25,30,.14);
+    --shadow-hi: 0 2px 6px rgba(20,25,30,.08), 0 16px 40px -12px rgba(30,40,60,.26);
+  }
+
+  html,body{ width:100%; height:100%; }
+  body{
+    background:var(--paper);
+    color:var(--ink);
+    font-family:"IBM Plex Sans", system-ui, sans-serif;
+    /* blueprint grid */
+    background-image:
+      linear-gradient(rgba(90,110,130,.045) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(90,110,130,.045) 1px, transparent 1px),
+      linear-gradient(rgba(90,110,130,.025) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(90,110,130,.025) 1px, transparent 1px);
+    background-size: 96px 96px, 96px 96px, 24px 24px, 24px 24px;
+    overflow:hidden;
+  }
+
+  .page{ position:fixed; inset:0; display:flex; flex-direction:column; }
+
+  /* ───────── header ───────── */
+  header{
+    padding:26px 40px 18px;
+    border-bottom:1px solid var(--line);
+    background:linear-gradient(180deg, var(--paper2), rgba(251,251,249,0));
+    flex:0 0 auto;
+  }
+  .eyebrow{
+    font-family:"IBM Plex Mono", monospace;
+    font-size:11px; font-weight:500; letter-spacing:.22em; text-transform:uppercase;
+    color:var(--muted); display:flex; align-items:center; gap:10px;
+  }
+  .eyebrow .dot{ width:6px; height:6px; border-radius:50%; background:var(--green); box-shadow:0 0 0 3px var(--green-soft); }
+  h1{
+    font-family:"Space Grotesk", sans-serif;
+    font-size:27px; font-weight:600; letter-spacing:-.01em; margin-top:8px; color:var(--ink);
+  }
+  h1 .accent{ color:var(--blue); }
+  .sub{ font-size:13px; color:var(--ink2); margin-top:3px; }
+
+  .legend{ display:flex; flex-wrap:wrap; gap:7px 18px; margin-top:16px; align-items:center; }
+  .leg{
+    display:flex; align-items:center; gap:8px; cursor:pointer; user-select:none;
+    font-size:12px; color:var(--ink2); padding:3px 8px 3px 4px; border-radius:7px;
+    transition:background .15s, color .15s; border:1px solid transparent;
+  }
+  .leg:hover{ background:var(--paper2); border-color:var(--line); }
+  .leg.on{ background:#fff; border-color:var(--line2); box-shadow:var(--shadow); color:var(--ink); }
+  .leg .swatch{ width:26px; height:0; border-top-width:2.5px; border-top-style:solid; position:relative; }
+  .leg .swatch.dash{ border-top-style:dashed; }
+  .leg .swatch::after{
+    content:""; position:absolute; right:-1px; top:-3.5px;
+    border-left:5px solid currentColor; border-top:3px solid transparent; border-bottom:3px solid transparent;
+  }
+  .hint{
+    margin-left:auto; font-family:"IBM Plex Mono", monospace; font-size:11px; color:var(--muted);
+    display:flex; align-items:center; gap:7px;
+  }
+  .hint .cursor{ width:13px; height:13px; }
+
+  /* ───────── stage ───────── */
+  .stagewrap{ flex:1 1 auto; position:relative; overflow:hidden; }
+  .scaler{ position:absolute; top:0; left:0; transform-origin:top left; }
+  .canvas{ position:relative; width:1272px; height:712px; }
+
+  svg.edges{ position:absolute; inset:0; width:100%; height:100%; overflow:visible; pointer-events:none; }
+  .edge{ fill:none; stroke-width:2; transition:opacity .25s, stroke-width .2s; }
+  .edge.dash{ stroke-dasharray:6 5; }
+  .edgehit{ fill:none; stroke:transparent; stroke-width:16; pointer-events:none; }
+  .elabel{
+    font-family:"IBM Plex Mono", monospace; font-size:11px; font-weight:500;
+    fill:var(--ink2);
+  }
+  .elabel rect{ fill:rgba(247,247,244,.92); }
+
+  /* region containers */
+  .region{
+    position:absolute; border:1.4px dashed var(--line2); border-radius:16px;
+    background:rgba(255,255,255,.28);
+  }
+  .region.eks{ border-color:color-mix(in oklch, var(--green) 45%, var(--line2)); background:color-mix(in oklch, var(--green-soft) 40%, transparent); }
+  .region-tag{
+    position:absolute; top:-9px; left:18px; padding:1px 9px;
+    font-family:"IBM Plex Mono", monospace; font-size:10.5px; font-weight:600; letter-spacing:.12em; text-transform:uppercase;
+    color:var(--muted); background:var(--paper); border-radius:6px;
+  }
+  .region.eks .region-tag{ color:color-mix(in oklch, var(--green) 75%, var(--ink)); }
+  .region-ico{
+    position:absolute; top:14px; right:16px; font-family:"IBM Plex Mono", monospace;
+    font-size:10px; letter-spacing:.1em; color:var(--muted); opacity:.7;
+  }
+
+  /* nodes */
+  .node{
+    position:absolute; background:var(--node); border:1.4px solid var(--line2);
+    border-radius:13px; padding:13px 15px 14px; box-shadow:var(--shadow);
+    cursor:pointer; transition:transform .18s cubic-bezier(.2,.8,.2,1), box-shadow .18s, border-color .18s, opacity .25s;
+    border-left-width:4px;
+  }
+  .node:hover{ transform:translateY(-2px); box-shadow:var(--shadow-hi); }
+  .node:focus-visible{ outline:2px solid var(--blue); outline-offset:2px; }
+  .node .kicker{
+    font-family:"IBM Plex Mono", monospace; font-size:10px; font-weight:500; letter-spacing:.04em;
+    color:var(--accent, var(--muted)); display:flex; align-items:center; gap:7px; margin-bottom:6px;
+    white-space:nowrap;
+  }
+  .node .kicker .badge{
+    margin-left:auto; font-size:9px; letter-spacing:.08em; text-transform:uppercase; font-weight:600;
+    padding:1px 6px; border-radius:5px; color:var(--accent); background:var(--accent-soft);
+  }
+  .node .nt{ font-family:"Space Grotesk", sans-serif; font-size:16px; font-weight:600; letter-spacing:-.01em; color:var(--ink); line-height:1.1; }
+  .node .ns{ font-size:11.5px; color:var(--muted); margin-top:5px; line-height:1.45; }
+  .node .ns b{ color:var(--ink2); font-weight:500; }
+
+  .node.dim{ opacity:.26; }
+  .node.lit{ box-shadow:var(--shadow-hi); transform:translateY(-2px); }
+  .edge.dim{ opacity:.12; }
+  .edge.lit{ stroke-width:3; }
+  .elabel.dim{ opacity:.12; }
+
+  /* node accent variants */
+  .node.green { border-left-color:var(--green);  --accent:var(--green);  --accent-soft:var(--green-soft); }
+  .node.blue  { border-left-color:var(--blue);   --accent:var(--blue);   --accent-soft:var(--blue-soft); }
+  .node.orange{ border-left-color:var(--orange); --accent:var(--orange); --accent-soft:var(--orange-soft); }
+  .node.purple{ border-left-color:var(--purple); --accent:var(--purple); --accent-soft:var(--purple-soft); }
+  .node.ink   { border-left-color:var(--dev);    --accent:var(--dev);    --accent-soft:#eceef0; }
+
+  /* ───────── detail drawer ───────── */
+  .backdrop{ position:fixed; inset:0; background:rgba(22,25,29,.18); opacity:0; pointer-events:none; transition:opacity .25s; backdrop-filter:blur(1px); z-index:20; }
+  .backdrop.show{ opacity:1; pointer-events:auto; }
+  .drawer{
+    position:fixed; top:0; right:0; height:100%; width:392px; max-width:92vw; z-index:30;
+    background:var(--paper2); border-left:1px solid var(--line2); box-shadow:-20px 0 50px -24px rgba(20,30,50,.4);
+    transform:translateX(100%); transition:transform .32s cubic-bezier(.22,.8,.18,1);
+    display:flex; flex-direction:column;
+  }
+  .drawer.show{ transform:none; }
+  .dr-head{ padding:24px 26px 18px; border-bottom:1px solid var(--line); position:relative; }
+  .dr-accent{ position:absolute; left:0; top:24px; bottom:18px; width:4px; border-radius:3px; background:var(--muted); }
+  .dr-kicker{ font-family:"IBM Plex Mono", monospace; font-size:11px; letter-spacing:.06em; color:var(--muted); margin-left:14px; }
+  .dr-title{ font-family:"Space Grotesk", sans-serif; font-size:23px; font-weight:600; letter-spacing:-.01em; margin:6px 0 0 14px; }
+  .dr-tag{ display:inline-block; margin:10px 0 0 14px; font-family:"IBM Plex Mono", monospace; font-size:10.5px; font-weight:600; letter-spacing:.05em; text-transform:uppercase; padding:3px 9px; border-radius:6px; }
+  .dr-close{
+    position:absolute; top:18px; right:18px; width:30px; height:30px; border-radius:8px; border:1px solid var(--line2);
+    background:#fff; cursor:pointer; display:flex; align-items:center; justify-content:center; color:var(--ink2); font-size:16px;
+    transition:background .15s, color .15s;
+  }
+  .dr-close:hover{ background:var(--ink); color:#fff; }
+  .dr-body{ padding:22px 26px 30px; overflow-y:auto; }
+  .dr-sec{ margin-bottom:22px; }
+  .dr-sec h3{
+    font-family:"IBM Plex Mono", monospace; font-size:10.5px; font-weight:600; letter-spacing:.14em; text-transform:uppercase;
+    color:var(--muted); margin-bottom:11px;
+  }
+  .dr-sec ul{ list-style:none; display:flex; flex-direction:column; gap:9px; }
+  .dr-sec li{ font-size:13.5px; line-height:1.5; color:var(--ink2); display:flex; gap:10px; }
+  .dr-sec li::before{ content:""; flex:0 0 auto; width:6px; height:6px; border-radius:50%; margin-top:7px; background:var(--drc, var(--muted)); }
+  .dr-files{ display:flex; flex-direction:column; gap:7px; }
+  .codeline{
+    font-family:"IBM Plex Mono", monospace; font-size:12px; color:var(--ink2);
+    background:#fff; border:1px solid var(--line); border-radius:8px; padding:8px 11px;
+    display:flex; align-items:center; gap:9px;
+  }
+  .codeline .fico{ color:var(--muted); }
+  .codeline b{ color:var(--ink); font-weight:600; }
+  .pillrow{ display:flex; flex-wrap:wrap; gap:6px; }
+  .pill{ font-family:"IBM Plex Mono", monospace; font-size:11px; color:var(--ink2); background:#fff; border:1px solid var(--line2); border-radius:20px; padding:3px 10px; }
+
+  .footer{
+    flex:0 0 auto; padding:9px 40px; border-top:1px solid var(--line); background:var(--paper2);
+    font-family:"IBM Plex Mono", monospace; font-size:10.5px; color:var(--muted);
+    display:flex; gap:22px; align-items:center;
+  }
+  .footer .grow{ margin-left:auto; }
+
+  @media print{
+    body{ overflow:visible; background:#fff; }
+    .hint, .footer{ display:none; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+  <header>
+    <div class="eyebrow"><span class="dot"></span>DevSecOps · System Architecture</div>
+    <h1>TeyaVet — <span class="accent">Architecture &amp; CI/CD Flow</span></h1>
+    <div class="sub">Flask · React · MySQL 8, shipped to AWS EKS through GitHub Actions with OIDC, Trivy gating &amp; Terraform-managed infra.</div>
+    <div class="legend" id="legend"></div>
+  </header>
+
+  <div class="stagewrap" id="stagewrap">
+    <div class="scaler" id="scaler">
+      <div class="canvas" id="canvas">
+        <svg class="edges" id="edges" viewBox="0 0 1272 712" preserveAspectRatio="none"></svg>
+      </div>
+    </div>
+  </div>
+
+  <div class="footer">
+    <span>teyavet-prod · us-east-1</span>
+    <span>4 workflows · OIDC-authenticated</span>
+    <span class="grow">Click a component to inspect it</span>
+  </div>
+</div>
+
+<div class="backdrop" id="backdrop"></div>
+<aside class="drawer" id="drawer" aria-hidden="true"></aside>
+
+<script>
+/* ════════════ DATA ════════════ */
+const C = { green:'var(--green)', blue:'var(--blue)', orange:'var(--orange)', purple:'var(--purple)', dev:'var(--dev)' };
+
+const NODES = {
+  developer:{ x:40,  y:300, w:196, color:'ink',
+    kicker:'git · github', title:'Developer', sub:'Pushes commits, opens PRs &amp; triggers manual runs.' },
+
+  prchecks:{ x:312, y:212, w:236, color:'purple',
+    kicker:'pr-checks.yml', badge:'on PR', title:'PR Checks', sub:'<b>6 parallel jobs</b> · lint · SCA · build · tests' },
+  terraform:{ x:312, y:88,  w:236, color:'blue',
+    kicker:'terraform-apply.yml', badge:'manual', title:'Terraform Apply', sub:'VPC · EKS · RDS · ECR · IAM · SGs' },
+  cd:{ x:312, y:344, w:236, color:'green',
+    kicker:'cd.yml', badge:'on master', title:'CD Pipeline', sub:'build → <b>Trivy scan</b> → push to ECR' },
+  deploy:{ x:312, y:496, w:236, color:'orange',
+    kicker:'deploy-eks.yml', badge:'manual', title:'Deploy to EKS', sub:'kubectl apply · secrets · migration job' },
+
+  ecr:{ x:844, y:92,  w:364, color:'green',
+    kicker:'amazon ecr', title:'ECR', sub:'Private registry · backend + frontend images · <b>scan on push</b>' },
+  oidc:{ x:844, y:204, w:364, color:'purple',
+    kicker:'iam · oidc', title:'GitHub OIDC → IAM Role', sub:'Short-lived creds · <b>no static keys</b> · all workflows' },
+
+  alb:{ x:866, y:324, w:330, color:'blue',
+    kicker:'aws load balancer controller', title:'ALB', sub:'Internet-facing · path routing' },
+  frontend:{ x:866, y:418, w:156, color:'ink',
+    kicker:'deployment ×2', title:'Frontend', sub:'Nginx · React SPA' },
+  backend:{ x:1040, y:418, w:156, color:'ink',
+    kicker:'deployment ×2', title:'Backend', sub:'Flask API · non-root' },
+  rds:{ x:930, y:560, w:200, color:'orange',
+    kicker:'amazon rds', title:'RDS MySQL 8', sub:'Private subnet · only from EKS' },
+};
+
+const REGIONS = [
+  { x:280, y:56,  w:300, h:600, cls:'', tag:'GitHub Actions', ico:'CI / CD' },
+  { x:820, y:56,  w:412, h:600, cls:'', tag:'AWS', ico:'us-east-1' },
+  { x:838, y:296, w:384, h:222, cls:'eks', tag:'EKS Cluster — teyavet-prod', ico:'' },
+];
+
+/* edges: from/to node, side l|r|t|b, optional frac along that side, type, label, nudge */
+const EDGES = [
+  { from:'developer',fs:'r',ff:.22, to:'terraform',ts:'l', type:'provision', label:'dispatch' },
+  { from:'developer',fs:'r',ff:.42, to:'prchecks', ts:'l', type:'dev',  label:'open PR' },
+  { from:'developer',fs:'r',ff:.62, to:'cd',       ts:'l', type:'dev',  label:'merge → master' },
+  { from:'developer',fs:'r',ff:.85, to:'deploy',   ts:'l', type:'deploy',label:'dispatch' },
+
+  { from:'cd',       fs:'r', to:'ecr',     ts:'l', type:'cicd', label:'docker push', curve:90, lx:0, ly:-8 },
+  { from:'terraform',fs:'r', to:'ecr',     ts:'b',tf:.18, type:'provision', label:'provisions infra', curve:70, lx:0, ly:-6 },
+  { from:'deploy',   fs:'r', to:'alb',     ts:'l', type:'deploy', label:'kubectl apply', curve:80, lx:0, ly:8 },
+
+  { from:'oidc',     fs:'l', to:'cd',      ts:'r',tf:.18, type:'oidc', label:'OIDC creds', curve:80, lx:-6, ly:-4 },
+
+  { from:'ecr',      fs:'b',ff:.28, to:'frontend',ts:'t', type:'pull', label:'image pull', curve:50, lx:-26, ly:0 },
+  { from:'ecr',      fs:'b',ff:.72, to:'backend', ts:'t', type:'pull', curve:60 },
+
+  { from:'alb',      fs:'b',ff:.32, to:'frontend',ts:'t',tf:.7, type:'http', label:'/', curve:24, lx:-12 },
+  { from:'alb',      fs:'b',ff:.68, to:'backend', ts:'t',tf:.3, type:'http', label:'/api', curve:24, lx:14 },
+
+  { from:'backend',  fs:'b', to:'rds',     ts:'t',tf:.82, type:'data', label:'MySQL :3306', curve:30, lx:26, ly:0 },
+];
+
+const EDGE_STYLE = {
+  cicd:     { color:C.green,  dash:false },
+  pull:     { color:C.green,  dash:true  },
+  deploy:   { color:C.orange, dash:true  },
+  data:     { color:C.orange, dash:false },
+  http:     { color:C.blue,   dash:false },
+  provision:{ color:C.blue,   dash:true  },
+  oidc:     { color:C.purple, dash:true  },
+  dev:      { color:C.dev,    dash:false },
+};
+
+const LEGEND = [
+  ['cicd','CI/CD flow'], ['pull','image pull'], ['deploy','deploy / data'],
+  ['http','HTTP traffic'], ['provision','provisions infra'], ['oidc','OIDC auth'], ['dev','developer action'],
+];
+
+/* detail content */
+const DETAIL = {
+  developer:{ color:C.dev, tag:'Source of change', what:[
+      'Single source of every change — commits, pull requests and manual workflow dispatches.',
+      'Opening a PR runs the gating checks; merging to <b>master</b> triggers the build pipeline.',
+      'Infra apply &amp; cluster deploy are run manually (workflow_dispatch) to keep them deliberate.'],
+    files:[['git','version control'],['github repo','master branch protected']],
+    pills:['open PR','merge → master','workflow_dispatch'] },
+
+  prchecks:{ color:C.purple, tag:'Quality &amp; security gate', what:[
+      '<b>Runs on every pull request to master</b> — must pass before merge.',
+      'Six parallel jobs: Frontend Lint (ESLint), Frontend SCA (npm audit), Frontend Build, Backend Lint (ruff), Backend SCA (pip-audit), Backend Tests (pytest).',
+      'SCA jobs surface vulnerable dependencies before they ever reach an image.'],
+    files:[['.github/workflows/pr-checks.yml','pull_request → master']],
+    pills:['eslint','npm audit','ruff','pip-audit','pytest','vite build'] },
+
+  terraform:{ color:C.blue, tag:'Infrastructure as Code', what:[
+      'Manually dispatched workflow that bootstraps then applies all AWS infrastructure.',
+      'Provisions VPC, EKS cluster, RDS, ECR, IAM roles and Security Groups.',
+      'Remote state in <b>S3</b> with a <b>DynamoDB</b> lock — safe, repeatable, single-writer applies.'],
+    files:[['.github/workflows/terraform-apply.yml','workflow_dispatch'],['infra/*.tf','vpc · eks · rds · ecr · iam · sg']],
+    pills:['S3 state','DynamoDB lock','us-east-1'] },
+
+  cd:{ color:C.green, tag:'Build · scan · publish', what:[
+      '<b>Runs on push to master.</b> Builds backend &amp; frontend Docker images.',
+      '<b>Trivy scans each image and fails the build on any CRITICAL finding</b> (severity=CRITICAL, exit-code 1) — nothing critical reaches the registry.',
+      'Runs integration tests, then authenticates via OIDC and pushes the images to ECR.'],
+    files:[['.github/workflows/cd.yml','push → master'],['Trivy','severity CRITICAL · blocking']],
+    pills:['docker buildx','trivy','integration tests','push to ECR'] },
+
+  deploy:{ color:C.orange, tag:'Release to cluster', what:[
+      'Manually dispatched deploy — keeps production releases intentional.',
+      'Authenticates via OIDC, then <b>kubectl apply</b>s the k8s manifests to the cluster.',
+      'Creates app secrets and runs the DB migration job before rolling out the new pods.'],
+    files:[['.github/workflows/deploy-eks.yml','workflow_dispatch'],['k8s/','deployments · services · ingress']],
+    pills:['kubectl apply','secrets','migration-job'] },
+
+  ecr:{ color:C.green, tag:'Container registry', what:[
+      'Private Elastic Container Registry holding the backend and frontend images.',
+      '<b>Image scanning runs on push</b> as a second layer behind the Trivy gate.',
+      'IAM-gated — the CD pipeline pushes and EKS nodes pull, both via short-lived OIDC roles.'],
+    files:[['amazon ecr','private · IAM-gated']],
+    pills:['backend image','frontend image','scan on push'] },
+
+  oidc:{ color:C.purple, tag:'Keyless cloud auth', what:[
+      'OIDC trust between GitHub Actions and an AWS IAM role.',
+      '<b>No long-lived AWS keys are stored in GitHub</b> — every job assumes the role for short-lived credentials.',
+      'Shared by all four workflows via <code>role-to-assume: secrets.AWS_ROLE_ARN</code>.'],
+    files:[['IAM OIDC provider','token.actions.githubusercontent.com'],['aws-actions/configure-aws-credentials','us-east-1']],
+    pills:['no static keys','short-lived','all workflows'] },
+
+  alb:{ color:C.blue, tag:'Ingress', what:[
+      'Internet-facing Application Load Balancer, provisioned by the AWS Load Balancer Controller from the Ingress object.',
+      'Path-based routing: app traffic to the frontend, API traffic to the backend service.',
+      'Only public entry point into the cluster.'],
+    files:[['k8s/ingress.yaml','alb · internet-facing']],
+    pills:['path routing','internet-facing'] },
+
+  frontend:{ color:C.dev, tag:'Workload · 2 replicas', what:[
+      'Two replicas of an Nginx container serving the built React single-page app.',
+      'Runs as a <b>non-root</b> container; static assets only.',
+      'Talks to the backend through the ALB, never directly to the database.'],
+    files:[['k8s/frontend/deployment.yaml','replicas: 2'],['frontend/Dockerfile.prod','nginx + vite build']],
+    pills:['nginx','react SPA','non-root'] },
+
+  backend:{ color:C.dev, tag:'Workload · 2 replicas', what:[
+      'Two replicas of the Flask REST API, running as a <b>non-root</b> container.',
+      'Reads config from a ConfigMap and DB credentials from a Kubernetes Secret.',
+      'The only workload permitted to reach RDS.'],
+    files:[['k8s/backend/deployment.yaml','replicas: 2'],['configmap.yaml · secret','env + credentials']],
+    pills:['flask','JWT auth','non-root'] },
+
+  rds:{ color:C.orange, tag:'Managed database', what:[
+      'Managed MySQL 8 instance in a <b>private subnet</b>.',
+      '<b>No public access</b> — reachable only from the EKS security group on :3306.',
+      'BINARY(16) UUID keys, raw-SQL repository layer (no ORM).'],
+    files:[['infra/rds.tf','private subnet'],['infra/security_groups.tf','ingress: EKS only']],
+    pills:['mysql 8','private','no public access'] },
+};
+
+/* ════════════ RENDER ════════════ */
+const canvas = document.getElementById('canvas');
+const svg = document.getElementById('edges');
+const SVGNS = 'http://www.w3.org/2000/svg';
+const rectOf = {};
+
+/* regions */
+REGIONS.forEach(r=>{
+  const d=document.createElement('div');
+  d.className='region '+r.cls;
+  d.style.cssText=`left:${r.x}px;top:${r.y}px;width:${r.w}px;height:${r.h}px`;
+  d.innerHTML=`<span class="region-tag">${r.tag}</span>${r.ico?`<span class="region-ico">${r.ico}</span>`:''}`;
+  canvas.appendChild(d);
+});
+
+/* nodes */
+for(const id in NODES){
+  const n=NODES[id];
+  const el=document.createElement('div');
+  el.className='node '+n.color;
+  el.id='node-'+id;
+  el.setAttribute('tabindex','0');
+  el.setAttribute('role','button');
+  el.style.cssText=`left:${n.x}px;top:${n.y}px;width:${n.w}px`;
+  el.innerHTML=`
+    <div class="kicker">${n.kicker}${n.badge?`<span class="badge">${n.badge}</span>`:''}</div>
+    <div class="nt">${n.title}</div>
+    <div class="ns">${n.sub}</div>`;
+  el.addEventListener('click',()=>openDetail(id));
+  el.addEventListener('keydown',e=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); openDetail(id);} });
+  canvas.appendChild(el);
+}
+
+function measure(){
+  for(const id in NODES){
+    const el=document.getElementById('node-'+id);
+    rectOf[id]={ x:el.offsetLeft, y:el.offsetTop, w:el.offsetWidth, h:el.offsetHeight };
+  }
+}
+function anchor(id, side, frac){
+  const r=rectOf[id]; const f=(frac==null?.5:frac);
+  switch(side){
+    case 'l': return {x:r.x, y:r.y+r.h*f, dx:-1, dy:0};
+    case 'r': return {x:r.x+r.w, y:r.y+r.h*f, dx:1, dy:0};
+    case 't': return {x:r.x+r.w*f, y:r.y, dx:0, dy:-1};
+    case 'b': return {x:r.x+r.w*f, y:r.y+r.h, dx:0, dy:1};
+  }
+}
+
+const edgeEls=[];
+function drawEdges(){
+  svg.querySelectorAll('.edge,.elabel').forEach(e=>e.remove());
+  edgeEls.length=0;
+  EDGES.forEach((e,i)=>{
+    const st=EDGE_STYLE[e.type];
+    const a=anchor(e.from,e.fs,e.ff), b=anchor(e.to,e.ts,e.tf);
+    const cv=e.curve||Math.max(46, Math.abs(b.x-a.x)*.42);
+    const c1={x:a.x+a.dx*cv, y:a.y+a.dy*cv};
+    const c2={x:b.x+b.dx*cv, y:b.y+b.dy*cv};
+    const dpath=`M ${a.x} ${a.y} C ${c1.x} ${c1.y}, ${c2.x} ${c2.y}, ${b.x} ${b.y}`;
+
+    const p=document.createElementNS(SVGNS,'path');
+    p.setAttribute('class','edge'+(st.dash?' dash':''));
+    p.setAttribute('d',dpath);
+    p.setAttribute('stroke',st.color);
+    p.setAttribute('marker-end','url(#m-'+e.type+')');
+    p.dataset.type=e.type; p.dataset.from=e.from; p.dataset.to=e.to;
+    svg.appendChild(p);
+    edgeEls.push(p);
+
+    if(e.label){
+      const mx=(a.x+3*c1.x+3*c2.x+b.x)/8 + (e.lx||0);
+      const my=(a.y+3*c1.y+3*c2.y+b.y)/8 + (e.ly||0);
+      const g=document.createElementNS(SVGNS,'g');
+      g.setAttribute('class','elabel'); g.dataset.type=e.type; g.dataset.from=e.from; g.dataset.to=e.to;
+      const t=document.createElementNS(SVGNS,'text');
+      t.setAttribute('x',mx); t.setAttribute('y',my); t.setAttribute('text-anchor','middle');
+      t.setAttribute('dominant-baseline','middle'); t.textContent=e.label;
+      const r=document.createElementNS(SVGNS,'rect');
+      g.appendChild(r); g.appendChild(t); svg.appendChild(g);
+      const bb=t.getBBox();
+      r.setAttribute('x',bb.x-5); r.setAttribute('y',bb.y-1.5);
+      r.setAttribute('width',bb.width+10); r.setAttribute('height',bb.height+3); r.setAttribute('rx',4);
+      edgeEls.push(g);
+    }
+  });
+}
+
+/* markers */
+(function markers(){
+  const defs=document.createElementNS(SVGNS,'defs');
+  for(const t in EDGE_STYLE){
+    const m=document.createElementNS(SVGNS,'marker');
+    m.setAttribute('id','m-'+t); m.setAttribute('markerWidth','8'); m.setAttribute('markerHeight','8');
+    m.setAttribute('refX','6.5'); m.setAttribute('refY','3'); m.setAttribute('orient','auto'); m.setAttribute('markerUnits','userSpaceOnUse');
+    const pl=document.createElementNS(SVGNS,'polygon');
+    pl.setAttribute('points','0,0 7,3 0,6'); pl.setAttribute('fill',EDGE_STYLE[t].color);
+    m.appendChild(pl); defs.appendChild(m);
+  }
+  svg.appendChild(defs);
+})();
+
+/* legend */
+const legend=document.getElementById('legend');
+LEGEND.forEach(([type,label])=>{
+  const st=EDGE_STYLE[type];
+  const el=document.createElement('div'); el.className='leg'; el.dataset.type=type;
+  el.innerHTML=`<span class="swatch ${st.dash?'dash':''}" style="border-top-color:${st.color};color:${st.color}"></span>${label}`;
+  el.addEventListener('mouseenter',()=>highlightType(type));
+  el.addEventListener('mouseleave',()=>{ if(!el.classList.contains('on')) clearHL(); });
+  el.addEventListener('click',()=>{
+    const was=el.classList.contains('on');
+    legend.querySelectorAll('.leg').forEach(l=>l.classList.remove('on'));
+    if(was){ clearHL(); } else { el.classList.add('on'); highlightType(type); }
+  });
+  legend.appendChild(el);
+});
+
+function highlightType(type){
+  document.querySelectorAll('.node').forEach(n=>n.classList.add('dim'));
+  const keep=new Set();
+  edgeEls.forEach(e=>{
+    if(e.dataset.type===type){ e.classList.add('lit'); e.classList.remove('dim'); keep.add(e.dataset.from); keep.add(e.dataset.to); }
+    else { e.classList.add('dim'); e.classList.remove('lit'); }
+  });
+  keep.forEach(id=>document.getElementById('node-'+id)?.classList.remove('dim'));
+}
+function clearHL(){
+  document.querySelectorAll('.node').forEach(n=>n.classList.remove('dim','lit'));
+  edgeEls.forEach(e=>e.classList.remove('dim','lit'));
+}
+
+/* node focus highlight */
+function litNode(id){
+  document.querySelectorAll('.node').forEach(n=>n.classList.add('dim'));
+  const keep=new Set([id]);
+  edgeEls.forEach(e=>{
+    if(e.dataset.from===id||e.dataset.to===id){ e.classList.add('lit'); e.classList.remove('dim'); keep.add(e.dataset.from); keep.add(e.dataset.to); }
+    else { e.classList.add('dim'); e.classList.remove('lit'); }
+  });
+  keep.forEach(k=>document.getElementById('node-'+k)?.classList.remove('dim'));
+  document.getElementById('node-'+id).classList.add('lit');
+}
+
+/* ════════════ DRAWER ════════════ */
+const drawer=document.getElementById('drawer');
+const backdrop=document.getElementById('backdrop');
+
+function openDetail(id){
+  const n=NODES[id], d=DETAIL[id];
+  litNode(id);
+  drawer.innerHTML=`
+    <div class="dr-head">
+      <div class="dr-accent" style="background:${d.color}"></div>
+      <button class="dr-close" id="drclose" aria-label="Close">&times;</button>
+      <div class="dr-kicker">${n.kicker}</div>
+      <div class="dr-title">${n.title}</div>
+      <span class="dr-tag" style="color:${d.color};background:color-mix(in oklch, ${d.color} 12%, white)">${d.tag}</span>
+    </div>
+    <div class="dr-body">
+      <div class="dr-sec" style="--drc:${d.color}">
+        <h3>What it does</h3>
+        <ul>${d.what.map(w=>`<li>${w}</li>`).join('')}</ul>
+      </div>
+      <div class="dr-sec">
+        <h3>Source / config</h3>
+        <div class="dr-files">${d.files.map(([a,b])=>`<div class="codeline"><span class="fico">▸</span><b>${a}</b><span style="margin-left:auto;color:var(--muted)">${b}</span></div>`).join('')}</div>
+      </div>
+      ${d.pills?`<div class="dr-sec"><h3>Stack</h3><div class="pillrow">${d.pills.map(p=>`<span class="pill">${p}</span>`).join('')}</div></div>`:''}
+    </div>`;
+  drawer.style.transform='translateX(100%)';        /* explicit start point */
+  void drawer.offsetWidth;                           /* synchronous reflow commits start */
+  drawer.classList.add('show'); drawer.style.transform='';
+  drawer.setAttribute('aria-hidden','false');
+  backdrop.classList.add('show');
+  document.getElementById('drclose').addEventListener('click',closeDetail);
+}
+function closeDetail(){
+  drawer.classList.remove('show'); drawer.style.transform=''; drawer.setAttribute('aria-hidden','true');
+  backdrop.classList.remove('show');
+  legend.querySelectorAll('.leg').forEach(l=>l.classList.remove('on'));
+  clearHL();
+}
+backdrop.addEventListener('click',closeDetail);
+document.addEventListener('keydown',e=>{ if(e.key==='Escape') closeDetail(); });
+
+/* ════════════ SCALE ════════════ */
+const scaler=document.getElementById('scaler');
+const wrap=document.getElementById('stagewrap');
+function fit(){
+  const pad=28;
+  const s=Math.min((wrap.clientWidth-pad*2)/1272, (wrap.clientHeight-pad*2)/712);
+  const sc=Math.min(s,1.18);
+  scaler.style.transform=`translate(${(wrap.clientWidth-1272*sc)/2}px, ${(wrap.clientHeight-712*sc)/2}px) scale(${sc})`;
+}
+
+function build(){ measure(); drawEdges(); fit(); }
+window.addEventListener('resize',()=>{ measure(); drawEdges(); fit(); });
+if(document.fonts&&document.fonts.ready){ document.fonts.ready.then(build); }
+window.addEventListener('load',build);
+build();
+</script>
+</body>
+</html>
