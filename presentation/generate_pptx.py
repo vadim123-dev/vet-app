@@ -119,12 +119,12 @@ def make_slide1(prs):
     tf.word_wrap = True
 
     p = tf.paragraphs[0]
-    p.text = "AM"
+    p.text = "VH"
     p.alignment = PP_ALIGN.CENTER
     p.font.size = Pt(26); p.font.bold = True; p.font.color.rgb = ACCENT
 
     for line, sz, col in [
-        ("Assaf Mashal",              13, TEXT),
+        ("Vadim Hasmenik",            13, TEXT),
         ("Full-Stack & Cloud Engineer", 10, MUTED),
         ("DevSecOps Course — Final Project", 9, ACCENT),
     ]:
