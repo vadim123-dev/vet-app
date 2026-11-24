@@ -1,0 +1,13 @@
+# Ruff config for the backend. CI pins the ruff version in requirements-dev.txt
+# so new default rules in future releases don't break the build unexpectedly.
+
+[lint]
+ignore = [
+    # Route handlers and repo writes intentionally catch broad exceptions
+    # to return a JSON 500 / wrap the DB error instead of crashing the request.
+    "BLE001",
+]
+
+[lint.isort]
+# Imports are `from backend.xxx`, so treat `backend` as our own package.
+known-first-party = ["backend"]

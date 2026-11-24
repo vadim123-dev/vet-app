@@ -1,4 +1,4 @@
-class Pet():
+class Pet:
 
     def __init__(self, type, breed, name):
         self.type = type

@@ -1,6 +1,7 @@
-from flask import Blueprint, jsonify, request, current_app
+from flask import Blueprint, current_app, jsonify, request
 from flask_jwt_extended import jwt_required
-from backend.db.repo import get_all_pets, get_pet_detail, add_pet
+
+from backend.db.repo import add_pet, get_all_pets, get_pet_detail
 
 pets_bp = Blueprint("pets", __name__, url_prefix="/pets")
 

@@ -1,9 +1,10 @@
 # db.py
-import os                                  # read configuration from environment variables
-import uuid                                # work with UUIDs in Python
-from dataclasses import dataclass          # simple, typed config object
+import os  # read configuration from environment variables
+import uuid  # work with UUIDs in Python
+from dataclasses import dataclass  # simple, typed config object
+
 from sqlalchemy import create_engine  # SQLAlchemy engine + safe SQL text()
-from sqlalchemy.engine import Engine        # type hint for Engine
+from sqlalchemy.engine import Engine  # type hint for Engine
 
 
 @dataclass(frozen=True)  # immutable config object (safer: no accidental changes at runtime)

@@ -1,11 +1,16 @@
 from datetime import date
-from flask import Blueprint, jsonify, request, current_app
+
+from flask import Blueprint, current_app, jsonify, request
 from flask_jwt_extended import jwt_required
+
 from backend.db.repo import (
-    get_appointments_for_day, get_clinic_resources,
-    create_appointment, update_appointment,
-    check_appointment_conflicts, get_current_hospitalizations,
+    check_appointment_conflicts,
+    create_appointment,
     get_active_reminders,
+    get_appointments_for_day,
+    get_clinic_resources,
+    get_current_hospitalizations,
+    update_appointment,
 )
 
 appointments_bp = Blueprint("appointments", __name__, url_prefix="/appointments")

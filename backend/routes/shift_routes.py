@@ -1,5 +1,6 @@
-from flask import Blueprint, jsonify, current_app
-from flask_jwt_extended import jwt_required, get_jwt_identity
+from flask import Blueprint, current_app, jsonify
+from flask_jwt_extended import get_jwt_identity, jwt_required
+
 from backend.db import repo
 
 shifts_bp = Blueprint("shifts", __name__, url_prefix="/shifts")

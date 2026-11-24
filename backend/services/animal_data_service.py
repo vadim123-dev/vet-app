@@ -1,8 +1,10 @@
-import requests
 import re
-from backend.models.dog import Dog
-from backend.models.cat import Cat
+
+import requests
+
 from backend.config import Config
+from backend.models.cat import Cat
+from backend.models.dog import Dog
 
 
 class AnimalDataService:

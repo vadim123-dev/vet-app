@@ -1,5 +1,6 @@
-from datetime import timedelta
 import os
+from datetime import timedelta
+
 
 class Config:
     API_DOGS_DATA = "https://api.thedogapi.com/v1/breeds"

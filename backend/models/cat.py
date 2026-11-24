@@ -1,4 +1,6 @@
 from backend.models.animal import Animal
+
+
 class Cat(Animal):
 
     def __init__(self, breed_id, name, weight, life_span, origin):

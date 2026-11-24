@@ -1,7 +1,9 @@
 from backend.models.pet import Pet
-class User():
 
-    def __init__(self, id, user_name, first_name, last_name, gender, city, password_hash, telephone, pets: dict[str, Pet] | None = {}):
+
+class User:
+
+    def __init__(self, id, user_name, first_name, last_name, gender, city, password_hash, telephone, pets: dict[str, Pet] | None = None):
         self.id = id
         self.user_name = user_name
         self.first_name = first_name
@@ -9,7 +11,7 @@ class User():
         self.gender = gender
         self.city = city
         self.telephone = telephone
-        self.pets = pets
+        self.pets = pets if pets is not None else {}
         self.password_hash = password_hash
 
 
