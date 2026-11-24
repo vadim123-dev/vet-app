@@ -1,9 +1,11 @@
-from backend.services.user_data_service import UserDataService
-from flask import jsonify, current_app
+from datetime import timedelta
+
+from flask import current_app, jsonify
 from flask_jwt_extended import create_access_token, create_refresh_token, decode_token
 from werkzeug.security import check_password_hash
-from datetime import timedelta
+
 from backend.db import repo
+from backend.services.user_data_service import UserDataService
 
 
 class AuthService:

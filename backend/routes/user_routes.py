@@ -1,8 +1,9 @@
-from flask import Blueprint, request, jsonify, current_app
+from flask import Blueprint, current_app, jsonify, request
+from flask_jwt_extended import get_jwt_identity, jwt_required
+
+from backend.db import repo
 from backend.services.auth_service import AuthService
 from backend.services.user_data_service import UserDataService
-from backend.db import repo
-from flask_jwt_extended import jwt_required, get_jwt_identity
 
 users_bp = Blueprint("users", __name__, url_prefix="/users")
 

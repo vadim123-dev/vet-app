@@ -1,8 +1,14 @@
 # repo.py
 import uuid
+
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
+
 from backend.db.db_config import bin_to_uuid, uuid_to_bin
+
+
+class RepositoryError(Exception):
+    """Raised when a database write fails for an unexpected reason."""
 
 
 def get_user_with_pets(engine: Engine, user_name: str) -> dict:
@@ -184,11 +190,11 @@ def add_user(engine: Engine, user_name: str, first_name: str, last_name: str,
             "telephone": telephone,
         }
     except Exception as e:
-        raise Exception(f"Failed to create user: {str(e)}")
+        raise RepositoryError(f"Failed to create user: {e!s}") from e
 
 
 def add_pet(engine: Engine, owner_user_name: str, name: str, pet_type_code: str,
-            breed_id: int = None, birth_date: str = None,
+            breed_id: int | None = None, birth_date: str | None = None,
             birth_date_is_estimated: bool = False) -> dict:
     """Add a new pet and link it to an existing owner."""
     owner_sql   = text("SELECT id FROM users WHERE user_name = :user_name")
@@ -230,7 +236,7 @@ def add_pet(engine: Engine, owner_user_name: str, name: str, pet_type_code: str,
     except ValueError:
         raise
     except Exception as e:
-        raise Exception(f"Failed to create pet: {str(e)}")
+        raise RepositoryError(f"Failed to create pet: {e!s}") from e
 
 
 def get_all_pets(engine: Engine) -> list[dict]:
@@ -900,7 +906,7 @@ def add_user_with_role(engine: Engine, user_name: str, first_name: str, last_nam
         return {"id": str(user_id), "user_name": user_name,
                 "first_name": first_name, "last_name": last_name}
     except Exception as e:
-        raise Exception(f"Failed to create user: {str(e)}")
+        raise RepositoryError(f"Failed to create user: {e!s}") from e
 
 
 def update_user_role(engine: Engine, user_name: str, new_role_code: str) -> None:

@@ -1,5 +1,6 @@
-import secrets # used for secure random numbers, better than random which is predictable
-import string # gives ready-made character sets
+import secrets  # used for secure random numbers, better than random which is predictable
+import string  # gives ready-made character sets
+
 
 def generate_strong_password(length=12):
     if length < 8:

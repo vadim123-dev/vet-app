@@ -1,7 +1,9 @@
-from werkzeug.security import generate_password_hash
 from flask import current_app
+from werkzeug.security import generate_password_hash
+
+from backend.db.repo import add_user_with_role as repo_add_user
+from backend.db.repo import get_all_users, get_user_with_pets
 from backend.utils import auth_utils
-from backend.db.repo import get_user_with_pets, get_all_users, add_user_with_role as repo_add_user
 
 
 class UserDataService:

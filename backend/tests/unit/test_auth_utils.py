@@ -1,5 +1,7 @@
 import string
+
 import pytest
+
 from backend.utils.auth_utils import generate_strong_password
 
 
