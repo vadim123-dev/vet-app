@@ -43,7 +43,7 @@ variable "eks_version" {
 
 variable "eks_node_instance_type" {
   description = "EC2 instance type for EKS worker nodes"
-  default     = "t3.medium"
+  default     = "c7i-flex.large" # Free Tier eligible (2 vCPU, 4 GB) — t3.medium is not
 }
 
 variable "eks_node_desired" {
