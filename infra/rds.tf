@@ -45,7 +45,7 @@ resource "aws_db_instance" "mysql" {
   # Set skip_final_snapshot = false and deletion_protection = true for real production
   skip_final_snapshot     = true
   deletion_protection     = false
-  backup_retention_period = 7
+  backup_retention_period = 1 # Free plan accounts reject longer retention
 
   tags = { Name = "${var.project}-mysql" }
 }
